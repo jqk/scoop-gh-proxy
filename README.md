@@ -1,6 +1,10 @@
 # 修改 scoop bucket manifest 文件中 url 的内容的工具
 
-## 一、 基础技术选型
+## 一、 功能
+
+使用 github 专用代理地址，替换 scoop bucket manifest 文件中 url 的内容，以加速下载。
+
+## 二、 基础技术选型
 
 - Go 当前最新版 Go
 - OS Windows only
@@ -18,11 +22,11 @@
 
 尽量使用标准库 + 一个颜色库。
 
-## 二、 CLI 设计
+## 三、 CLI 设计
 
 ```bash
 scoop-gh-proxy --set
-scoop-gh-proxy --reset
+scoop-gh-proxy --restore
 scoop-gh-proxy --status
 
 # 如果没有参数，就相当于 help
@@ -30,12 +34,18 @@ scoop-gh-proxy --help
 scoop-gh-proxy --version
 ```
 
-对于 `set` 和 `reset` 命令，基本执行顺序是：
+对于 `set` 和 `restore` 命令，基本执行顺序是：
 
 - 获取 scoop config
-- 执行 set 或 reset 逻辑
+- 执行 set 或 restore 逻辑
 
-## 三、 获取并校验 scoop config 信息
+对于 `status` 命令，基本执行顺序是：
+
+- 先执行 restore 命令
+- 再执行 set 命令
+- 但两者均不执行实际修改操作
+
+## 四、 获取并校验 scoop config 信息
 
 通过执行 `scoop config` 命令，获取所需配置：
 
@@ -46,28 +56,28 @@ scoop-gh-proxy --version
 
 前两个参数是 scoop 使用的，后两个参数是本程序专用的。
 
-以下检查，均只针对 `set` 和 `reset` 命令。无论如何，不修改 `scoop config` 文件。
+以下检查，均只针对 `set` 和 `restore` 命令。无论如何，不修改 `scoop config` 文件。
 
-### 3.1 root_path
+### 4.1 root_path
 
 scoop 的安装目录。必须存在且不为空字符串，且目录存在，否则报错退出。
 
-### 3.2 proxy
+### 4.2 proxy
 
 scoop 使用的代理信息。可以不存在或为空。
 
-### 3.3 gh_proxy
+### 4.3 gh_proxy
 
 必须存在且不为空字符串，否则报错退出。
 
 如果尾部没有 `/`，则加上。
 
-### 3.4 gh_scoop_proxy_backup
+### 4.4 gh_scoop_proxy_backup
 
 - 如果 `proxy` 不存在或为空，本字段应亦不存在或为空。否则给出警告，但继续执行。
 - 如果 `proxy` 存在且不空，本字段必须存在且不为空字符串。否则给出警告，但继续执行。
 
-## 四、 set 命令
+## 五、 set 命令
 
 ```text
 执行 scoop config 获取并检查配置信息
@@ -127,13 +137,13 @@ Name    Installed Version Latest Version Proxy Status
 ----    ----------------- -------------- -------------------- ----
 alma    0.4.150           0.4.151        Not github
 cmirror 0.1.2                            Skipped
-git     2.55.0.5          2.56.0         [gh_proxy 的 实际值]
-uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
+git     2.55.0.5          2.56.0         Is github
+uv      0.12.19           0.12.20        Is github
 ```
 
 如果 `Manifest to Set: 0`，则无后续明细输出。
 
-## 五、 reset 命令
+## 六、 restore 命令
 
 ```text
 执行 scoop config 获取并检查配置信息
@@ -152,7 +162,7 @@ uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
 输出内容：
 
 ```text
-Manifest to Reset: 3
+Manifest to restore: 3
 
 Name    Bucket
 ----    ----------------- 
@@ -161,13 +171,13 @@ git     main
 uv      extras
 ```
 
-如果 `Manifest to Reset: 0`，则无后续明细输出。
+如果 `Manifest to restore: 0`，则无后续明细输出。
 
-## 六、 status 命令
+## 七、 status 命令
 
-先执行 reset 命令，后执行 set 命令，只不过不真正修改任何文件，只是输出要变更的明细。输出内容参见这两个命令。
+先执行 restore 命令，后执行 set 命令，只不过不真正修改任何文件，只是输出要变更的明细。输出内容参见这两个命令。
 
-## 七、 JSON
+## 八、 JSON
 
 不要预定义完整 Manifest Struct。程序只关心 Manifest 中的 url 字段。
 
@@ -203,14 +213,14 @@ json.MarshalIndent(manifest, "", "  ")
 
 但只要语意正确，scoop 可以正常使用即可。
 
-## 八、 彩色输出
+## 九、 彩色输出
 
 - INFO：普通
 - SUCCESS：绿色
 - WARNING：黄色
 - ERROR：红色
 
-## 九、 程序组织结构
+## 十、 程序组织结构
 
 ```text
 scoop-proxy/
@@ -224,7 +234,7 @@ scoop-proxy/
 ├── scoop_config.go # scoop config 信息处理
 ├── scoop_status.go # scoop status -l 信息处理
 ├── manifest.go     # manifest 文件处理
-├── backup.go       # manifest 文件备份及还原处理
+├── bucket.go       # manifest 文件备份及还原处理
 ├── output.go       # 输出处理
 └── build.bat       # 编译脚本
 ```
