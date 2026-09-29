@@ -10,8 +10,8 @@ go build -o scoop-gh-proxy.exe .
 ```
 
 ## 文件结构
-- `main.go` — 入口，flag 分发
-- `cli.go` — set/reset 业务逻辑
+- `main.go` — 入口，flag 分发（--set / --reset / --status / --help / --version）
+- `cli.go` — set/reset/status 业务逻辑
 - `scoop_config.go` — 解析并校验 scoop config
 - `scoop_status.go` — 解析 scoop status -l
 - `manifest.go` — 读写 [app].json、修补 GitHub URL
@@ -36,6 +36,16 @@ go build -o scoop-gh-proxy.exe .
 - `Skipped` — 该行有 Info 列，或备份已存在，或 manifest 找不到
 - `Not github` — manifest 无 GitHub URL
 - 实际 gh_proxy 值 — 已修改
+
+## 命令行为
+- `--set` — 备份 + 修改 [app].json，输出 "Manifest to Set: N" + 明细表
+- `--reset` — 还原 backup，输出 "Manifest to Reset: N" + 明细表（Name + Bucket）
+- `--status` — dry-run，先输出 reset 明细，再输出 set 明细，不修改任何文件
+- N 为 0 时不输出明细表
+
+## 共享逻辑
+- `classifyAppForSet` — 只读分类（set 与 status 共用）
+- `collectResetItems` — 只读扫描 backup（reset 与 status 共用）
 
 ## 编译验证
 ```

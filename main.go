@@ -22,6 +22,8 @@ func main() {
 			runSet()
 		case "--reset":
 			runReset()
+		case "--status":
+			runStatus()
 		case "--help", "-h":
 			printUsage()
 		case "--version", "-v":
@@ -40,6 +42,7 @@ func printUsage() {
 	fmt.Println("用法:")
 	fmt.Println("  scoop-gh-proxy --set    将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
 	fmt.Println("  scoop-gh-proxy --reset  还原已备份的原始 [app].json")
+	fmt.Println("  scoop-gh-proxy --status 预览将要还原/修改的明细（不实际修改）")
 	fmt.Println()
 	fmt.Println("选项:")
 	fmt.Println("  -h, --help     显示帮助")

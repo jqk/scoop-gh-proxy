@@ -23,6 +23,7 @@
 ```bash
 scoop-gh-proxy --set
 scoop-gh-proxy --reset
+scoop-gh-proxy --status
 
 # 如果没有参数，就相当于 help
 scoop-gh-proxy --help
@@ -100,6 +101,36 @@ scoop 使用的代理信息。可以不存在或为空。
 
 `scoop\buckets\[bucket]` 下，一般有 `bucket` 目录，保存所有 app 的 manifest 文件。但也有少数 bucket 没有 `bucket` 目录，而是直接在仓库目录下保存所有 app 的 manifest 文件。
 
+以下是 `scoop status -l` 的输出示例：
+
+```text
+Name    Installed Version Latest Version Missing Dependencies Info
+----    ----------------- -------------- -------------------- ----
+alma    0.4.150           0.4.151
+cmirror 0.1.2                                                 Deprecated, Manifest removed
+git     2.55.0.5          2.56.0
+uv      0.12.19           0.12.20
+```
+
+- 只处理只有 `Name、Installed Version、Latest Version` 的行，其它行跳过。
+- manifest 中，只要有一个 `github.com` 的 url，则认定义该 manifest 需修改。
+- 所有 url 都不需要修改，则跳过该 manifest。
+
+假设 `alma` 下载链接不以 `https://github.com` 开始，则应输出以下结果。
+
+```text
+Manifest to Set: 4
+
+Name    Installed Version Latest Version Proxy Status
+----    ----------------- -------------- -------------------- ----
+alma    0.4.150           0.4.151        Not github
+cmirror 0.1.2                            Skipped
+git     2.55.0.5          2.56.0         [gh_proxy 的 实际值]
+uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
+```
+
+如果 `Manifest to Set: 0`，则无后续明细输出。
+
 ## 五、 reset 命令
 
 ```text
@@ -116,7 +147,25 @@ scoop 使用的代理信息。可以不存在或为空。
 执行 scoop config proxy go_backup_for_scoop_proxy的实际值
 ```
 
-## 六、 JSON
+输出内容：
+
+```text
+Manifest to Reset: 3
+
+Name    Bucket
+----    ----------------- 
+alma    lemon
+git     main
+uv      extras
+```
+
+如果 `Manifest to Reset: 0`，则无后续明细输出。
+
+## 六、 status 命令
+
+先执行 reset 命令，后执行 set 命令，只不过不真正修改任何文件，只是输出要变更的明细。输出内容参见这两个命令。
+
+## 七、 JSON
 
 不要预定义完整 Manifest Struct。程序只关心 Manifest 中的 url 字段。
 
@@ -152,42 +201,14 @@ json.MarshalIndent(manifest, "", "  ")
 
 但只要语意正确，scoop 可以正常使用即可。
 
-## 七、 彩色输出
+## 八、 彩色输出
 
 - INFO：普通
 - SUCCESS：绿色
 - WARNING：黄色
 - ERROR：红色
 
-## 八、 显示 URL 的修改结果
-
-以下是 `scoop status -l` 的输出示例：
-
-```text
-Name    Installed Version Latest Version Missing Dependencies Info
-----    ----------------- -------------- -------------------- ----
-alma    0.4.150           0.4.151
-cmirror 0.1.2                                                 Deprecated, Manifest removed
-git     2.55.0.5          2.56.0
-uv      0.12.19           0.12.20
-```
-
-- 只处理只有 `Name、Installed Version、Latest Version` 的行，其它行跳过。
-- manifest 中，只要有一个 `github.com` 的 url，则认定义该 manifest 需修改。
-- 所有 url 都不需要修改，则跳过该 manifest。
-
-假设 `alma` 下载链接不以 `https://github.com` 开始，则应输出以下结果。
-
-```text
-Name    Installed Version Latest Version Proxy Status
-----    ----------------- -------------- -------------------- ----
-alma    0.4.150           0.4.151        Not github
-cmirror 0.1.2                            Skipped
-git     2.55.0.5          2.56.0         [gh_proxy 的 实际值]
-uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
-```
-
-## 九、 程序组织结构
+## 十、 程序组织结构
 
 ```text
 scoop-proxy/
