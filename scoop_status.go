@@ -23,7 +23,8 @@ func parseScoopStatus() ([]statusRow, error) {
 	}
 
 	var rows []statusRow
-	for raw := range strings.SplitSeq(string(out), "\n") {
+	s := stripAnsi(string(out))
+	for raw := range strings.SplitSeq(s, "\n") {
 		trimmed := strings.TrimSpace(raw)
 
 		if trimmed == "" ||

@@ -152,11 +152,11 @@ func runReset() {
 		success("已还原 %s", it.Name)
 	}
 
-	if cfg.GoBackupProxy != "" {
-		if err := exec.Command("scoop", "config", "proxy", cfg.GoBackupProxy).Run(); err != nil {
-			warning("scoop config proxy %s 失败: %v", cfg.GoBackupProxy, err)
+	if cfg.GhScoopProxyBackup != "" {
+		if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
+			warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
 		} else {
-			success("已执行 scoop config proxy %s", cfg.GoBackupProxy)
+			success("已执行 scoop config proxy %s", cfg.GhScoopProxyBackup)
 		}
 	}
 

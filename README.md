@@ -41,8 +41,10 @@ scoop-gh-proxy --version
 
 - root_path
 - proxy
-- go_backup_for_scoop_proxy
+- gh_scoop_proxy_backup
 - gh_proxy
+
+前两个参数是 scoop 使用的，后两个参数是本程序专用的。
 
 以下检查，均只针对 `set` 和 `reset` 命令。无论如何，不修改 `scoop config` 文件。
 
@@ -50,17 +52,17 @@ scoop-gh-proxy --version
 
 scoop 的安装目录。必须存在且不为空字符串，且目录存在，否则报错退出。
 
-#### 3.1.1 gh_proxy
+### 3.2 proxy
+
+scoop 使用的代理信息。可以不存在或为空。
+
+### 3.3 gh_proxy
 
 必须存在且不为空字符串，否则报错退出。
 
 如果尾部没有 `/`，则加上。
 
-### 3.2 proxy
-
-scoop 使用的代理信息。可以不存在或为空。
-
-### 3.3 go_backup_for_scoop_proxy
+### 3.4 gh_scoop_proxy_backup
 
 - 如果 `proxy` 不存在或为空，本字段应亦不存在或为空。否则给出警告，但继续执行。
 - 如果 `proxy` 存在且不空，本字段必须存在且不为空字符串。否则给出警告，但继续执行。
@@ -143,8 +145,8 @@ uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
 将 [app]-gh-backup.json 更名为 [app].json
 至此，针对某个 app 的修改结束
         ↓
-如果 scoop config 的 go_backup_for_scoop_proxy 不为空，
-执行 scoop config proxy go_backup_for_scoop_proxy的实际值
+如果 scoop config 的 gh_scoop_proxy_backup 不为空，
+执行 scoop config proxy gh_scoop_proxy_backup的实际值
 ```
 
 输出内容：
@@ -208,7 +210,7 @@ json.MarshalIndent(manifest, "", "  ")
 - WARNING：黄色
 - ERROR：红色
 
-## 十、 程序组织结构
+## 九、 程序组织结构
 
 ```text
 scoop-proxy/
