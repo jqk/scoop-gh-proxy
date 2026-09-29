@@ -1,0 +1,207 @@
+# 修改 scoop bucket manifest 文件中 url 的内容的工具
+
+## 一、 基础技术选型
+
+- Go 当前最新版 Go
+- OS Windows only
+- CLI Go 标准库 flag 或专门 CLI 库
+- JSON 标准库 encoding/json，应该是 1.27.1 以来的 v2 版？
+- 文件 标准库 os / filepath
+- 执行 Scoop os/exec
+- 输出 os.Stdout / os.Stderr
+- 彩色输出 github.com/fatih/color
+- 日志文件 不需要
+- 配置文件 不需要
+- 数据库 不需要
+- Git 程序本身不直接依赖 Git 操作
+- GUI 第一版不做
+
+尽量使用标准库 + 一个颜色库。
+
+## 二、 CLI 设计
+
+```bash
+scoop-gh-proxy --set
+scoop-gh-proxy --reset
+
+# 如果没有参数，就相当于 help
+scoop-gh-proxy --help
+scoop-gh-proxy --version
+```
+
+对于 `set` 和 `reset` 命令，基本执行顺序是：
+
+- 获取 scoop config
+- 执行 set 或 reset 逻辑
+
+## 三、 获取并校验 scoop config 信息
+
+通过执行 `scoop config` 命令，获取所需配置：
+
+- root_path
+- proxy
+- go_backup_for_scoop_proxy
+- gh_proxy
+
+以下检查，均只针对 `set` 和 `reset` 命令。无论如何，不修改 `scoop config` 文件。
+
+### 3.1 root_path
+
+scoop 的安装目录。必须存在且不为空字符串，且目录存在，否则报错退出。
+
+#### 3.1.1 gh_proxy
+
+必须存在且不为空字符串，否则报错退出。
+
+如果尾部没有 `/`，则加上。
+
+### 3.2 proxy
+
+scoop 使用的代理信息。可以不存在或为空。
+
+### 3.3 go_backup_for_scoop_proxy
+
+- 如果 `proxy` 不存在或为空，本字段应亦不存在或为空。否则给出警告，但继续执行。
+- 如果 `proxy` 存在且不空，本字段必须存在且不为空字符串。否则给出警告，但继续执行。
+
+## 四、 set 命令
+
+```text
+执行 scoop config 获取并检查配置信息
+        ↓
+执行 scoop status -l 命令获取软件项状态
+        ↓
+如果有需要更新的 app，针对所有需更新的 app 执行
+        ↓
+从 scoop\apps 中找到需要更新的 App
+        ↓
+在其 current 目录中定位并分析 install.json，得到 bucket
+        ↓
+进入 scoop\buckets\[前面得到的 bucket]\bucket 目录。
+
+备份 [app].json 为 [app]-gh-backup.json。如果备份文件已存在，则报警，跳过当前软件
+        ↓
+修改 GitHub URL。修改一级元素 url 或三级元素 architecture.xxx.url。
+只修改起始为 https://github.com 的 url。
+将 gh_proxy 添加到该 url 之前成为组合 url。
+至此，针对某个 app 的修改结束
+        ↓
+如果 scoop config 的 proxy 不为空，执行 scoop config rm proxy
+```
+
+以下为 `install.json` 的内容：
+
+```json
+{
+    "bucket": "extras",
+    "architecture": "64bit"
+}
+```
+
+`scoop\buckets\[bucket]` 下，一般有 `bucket` 目录，保存所有 app 的 manifest 文件。但也有少数 bucket 没有 `bucket` 目录，而是直接在仓库目录下保存所有 app 的 manifest 文件。
+
+## 五、 reset 命令
+
+```text
+执行 scoop config 获取并检查配置信息
+        ↓
+遍历 scoop\buckets，找到有 [app]-gh-backup.json 的软件项
+        ↓
+删除 [app].json
+        ↓
+将 [app]-gh-backup.json 更名为 [app].json
+至此，针对某个 app 的修改结束
+        ↓
+如果 scoop config 的 go_backup_for_scoop_proxy 不为空，
+执行 scoop config proxy go_backup_for_scoop_proxy的实际值
+```
+
+## 六、 JSON
+
+不要预定义完整 Manifest Struct。程序只关心 Manifest 中的 url 字段。
+
+```text
+manifest
+├── url
+└── architecture
+      ├── 64bit
+      │    └── url
+      ├── 32bit
+      │    └── url
+      └── arm64
+           └── url
+```
+
+注意 `url` 对应的值可以是地址字符串数组。
+
+```go
+var manifest map[string]any
+
+json.Unmarshal(data, &manifest)
+
+// 修改 url 之后：
+json.MarshalIndent(manifest, "", "  ")
+```
+
+经过处理，JSON 格式可能发生变化，例如：
+
+- 缩进变化
+- 空格变化
+- 转义形式变化
+- 文件末尾换行变化
+
+但只要语意正确，scoop 可以正常使用即可。
+
+## 七、 彩色输出
+
+- INFO：普通
+- SUCCESS：绿色
+- WARNING：黄色
+- ERROR：红色
+
+## 八、 显示 URL 的修改结果
+
+以下是 `scoop status -l` 的输出示例：
+
+```text
+Name    Installed Version Latest Version Missing Dependencies Info
+----    ----------------- -------------- -------------------- ----
+alma    0.4.150           0.4.151
+cmirror 0.1.2                                                 Deprecated, Manifest removed
+git     2.55.0.5          2.56.0
+uv      0.12.19           0.12.20
+```
+
+- 只处理只有 `Name、Installed Version、Latest Version` 的行，其它行跳过。
+- manifest 中，只要有一个 `github.com` 的 url，则认定义该 manifest 需修改。
+- 所有 url 都不需要修改，则跳过该 manifest。
+
+假设 `alma` 下载链接不以 `https://github.com` 开始，则应输出以下结果。
+
+```text
+Name    Installed Version Latest Version Proxy Status
+----    ----------------- -------------- -------------------- ----
+alma    0.4.150           0.4.151        Not github
+cmirror 0.1.2                            Skipped
+git     2.55.0.5          2.56.0         [gh_proxy 的 实际值]
+uv      0.12.19           0.12.20        [gh_proxy 的 实际值]
+```
+
+## 九、 程序组织结构
+
+```text
+scoop-proxy/
+│
+├── go.mod
+├── go.sum
+├── README.md
+│
+├── main.go         # 程序入口
+├── cli.go          # CLI 命令处理
+├── scoop_config.go # scoop config 信息处理
+├── scoop_status.go # scoop status -l 信息处理
+├── manifest.go     # manifest 文件处理
+├── backup.go       # manifest 文件备份及还原处理
+├── output.go       # 输出处理
+└── build.bat       # 编译脚本
+```
