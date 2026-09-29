@@ -7,6 +7,54 @@ import (
 	"strings"
 )
 
+// resetItem 一条待还原的 app 记录
+type resetItem struct {
+	Name   string
+	Bucket string
+	Path   string // [app].json 的完整路径（backup 同目录）
+}
+
+// collectResetItems 只读扫描，收集 buckets 下所有 *-gh-backup.json
+func collectResetItems(rootPath string) []resetItem {
+	bucketsDir := filepath.Join(rootPath, "buckets")
+	var items []resetItem
+
+	filepath.Walk(bucketsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil // 跳过目录
+		}
+		if !strings.HasSuffix(info.Name(), "-gh-backup.json") {
+			return nil // 跳过非备份文件
+		}
+
+		// info.Name() 是不含路径的文件名
+		// path 是包含路径的完整文件名
+		appName := stripBackupSuffix(info.Name())
+		items = append(items, resetItem{
+			Name:   appName,
+			Bucket: deriveBucketFromPath(bucketsDir, path),
+			Path:   stripBackupSuffix(path),
+		})
+		return nil
+	})
+
+	return items
+}
+
+// deriveBucketFromPath 从 [app]-gh-backup.json 的路径推出 bucket 名
+// 路径形如 buckets\<b>\bucket\<app>-gh-backup.json 或 buckets\<b>\<app>-gh-backup.json
+func deriveBucketFromPath(bucketsDir, fullPath string) string {
+	rel, err := filepath.Rel(bucketsDir, fullPath)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
 // backupPath 返回 [app].json 对应的备份文件路径
 func backupPath(appJSONPath string) string {
 	dir := filepath.Dir(appJSONPath)
