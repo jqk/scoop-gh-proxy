@@ -4,5 +4,7 @@
 # 2. 再用 ! 把想保留的单独"捞"回来
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
 *.exe
