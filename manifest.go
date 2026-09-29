@@ -93,8 +93,8 @@ func patchSingleURL(s *string, ghProxy string) bool {
 	return true
 }
 
-// manifestHasGitHubURL 判断 manifest 文件中是否至少有一个 github.com url
-func manifestHasGitHubURL(manifestPath string) (bool, error) {
+// manifestHasGitHubDownloadURL 判断 manifest 文件中是否至少有一个 github.com 下载链接
+func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return false, err
@@ -103,12 +103,9 @@ func manifestHasGitHubURL(manifestPath string) (bool, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return false, err
 	}
-	return containsGitHubURL(m), nil
-}
 
-func containsGitHubURL(m map[string]any) bool {
-	if v, ok := m["url"]; ok && hasGitHubInValue(v) {
-		return true
+	if v, ok := m["url"]; ok && contentHasGitHubPrefix(v) {
+		return true, nil
 	}
 	if arch, ok := m["architecture"].(map[string]any); ok {
 		for _, archVal := range arch {
@@ -116,15 +113,15 @@ func containsGitHubURL(m map[string]any) bool {
 			if !ok {
 				continue
 			}
-			if v, exists := av["url"]; exists && hasGitHubInValue(v) {
-				return true
+			if v, exists := av["url"]; exists && contentHasGitHubPrefix(v) {
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
-func hasGitHubInValue(v any) bool {
+func contentHasGitHubPrefix(v any) bool {
 	switch u := v.(type) {
 	case string:
 		return strings.HasPrefix(u, "https://github.com")

@@ -63,11 +63,11 @@ func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 	manifestPath := findManifest(cfg.RootPath, row.Name)
 	if manifestPath == "" {
 		warning("未找到 %s 的 manifest，跳过", row.Name)
-		row.ProxyStatus = "Skipped"
+		row.ProxyStatus = "Manifest not found"
 		return row
 	}
 
-	ghURL, err := manifestHasGitHubURL(manifestPath)
+	ghURL, err := manifestHasGitHubDownloadURL(manifestPath)
 	if err != nil {
 		warning("读取 %s manifest 失败: %v", row.Name, err)
 		row.ProxyStatus = "Skipped"
@@ -80,11 +80,11 @@ func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 
 	if _, err := os.Stat(backupPath(manifestPath)); err == nil {
 		warning("%s 的备份文件已存在，跳过", row.Name)
-		row.ProxyStatus = "Skipped"
+		row.ProxyStatus = "Manifest backup exists"
 		return row
 	}
 
-	row.ProxyStatus = cfg.GhProxy
+	row.ProxyStatus = "Is github"
 	return row
 }
 
@@ -209,7 +209,7 @@ func runStatus() {
 	}
 	setCount := 0
 	for _, r := range results {
-		if r.ProxyStatus == cfg.GhProxy {
+		if r.ProxyStatus == "Is github" {
 			setCount++
 		}
 	}
