@@ -10,7 +10,8 @@ type statusRow struct {
 	Name        string
 	Installed   string
 	Latest      string
-	ProxyStatus string // set 结果：Not github / Skipped / 实际 gh_proxy 值
+	Bucket      string
+	ProxyStatus string // 状态值，将来定义为枚举
 }
 
 // parseScoopStatus 执行并解析 scoop status -l。

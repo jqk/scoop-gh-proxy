@@ -15,6 +15,17 @@ import (
 // set
 // ---------------------------------------------------------------------------
 
+// statusValue set 命令中 Proxy Status 列的枚举值
+type statusValue string
+
+const (
+	StatusNotGitHub    statusValue = "Not github"
+	StatusSkipped      statusValue = "Skipped"
+	StatusIsGitHub     statusValue = "Is github"
+	StatusManifestMiss statusValue = "Manifest not found"
+	StatusBackupExists statusValue = "Manifest backup exists"
+)
+
 func runSet() {
 	cfg, err := getScoopConfig()
 	if err != nil {
@@ -35,7 +46,7 @@ func runSet() {
 
 	modified := 0
 	for _, r := range results {
-		if r.ProxyStatus != cfg.GhProxy {
+		if r.ProxyStatus != string(StatusIsGitHub) {
 			continue
 		}
 		if applySetForApp(r, cfg) {
@@ -60,10 +71,13 @@ func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 		return row
 	}
 
-	manifestPath := findManifest(cfg.RootPath, row.Name)
+	bucket := findBucket(cfg.RootPath, row.Name)
+	row.Bucket = bucket
+
+	manifestPath := findManifest(cfg.RootPath, row.Name, bucket)
 	if manifestPath == "" {
 		warning("未找到 %s 的 manifest，跳过", row.Name)
-		row.ProxyStatus = "Manifest not found"
+		row.ProxyStatus = string(StatusManifestMiss)
 		return row
 	}
 
@@ -74,23 +88,23 @@ func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 		return row
 	}
 	if !ghURL {
-		row.ProxyStatus = "Not github"
+		row.ProxyStatus = string(StatusNotGitHub)
 		return row
 	}
 
 	if _, err := os.Stat(backupPath(manifestPath)); err == nil {
 		warning("%s 的备份文件已存在，跳过", row.Name)
-		row.ProxyStatus = "Manifest backup exists"
+		row.ProxyStatus = string(StatusBackupExists)
 		return row
 	}
 
-	row.ProxyStatus = "Is github"
+	row.ProxyStatus = string(StatusIsGitHub)
 	return row
 }
 
 // applySetForApp 执行备份 + 修改，返回是否成功。
 func applySetForApp(row statusRow, cfg ScoopConfig) bool {
-	manifestPath := findManifest(cfg.RootPath, row.Name)
+	manifestPath := findManifest(cfg.RootPath, row.Name, row.Bucket)
 	if manifestPath == "" {
 		return false
 	}
@@ -124,25 +138,27 @@ func printSetSummary(modified int, results []statusRow) {
 }
 
 // ---------------------------------------------------------------------------
-// reset
+// restore
 // ---------------------------------------------------------------------------
 
-func runReset() {
+func runRestore() {
 	cfg, err := getScoopConfig()
 	if err != nil {
 		error_("%s", err)
 		os.Exit(1)
 	}
 
-	items := collectResetItems(cfg.RootPath)
+	items := collectRestoreItems(cfg.RootPath)
 	restored := 0
-	for _, it := range items {
-		if err := restoreAppJSON(it.Path); err != nil {
-			error_("还原 %s 失败: %v", it.Name, err)
+	for i := range items {
+		if err := restoreAppJSON(items[i].Path); err != nil {
+			error_("还原 %s 失败: %v", items[i].Name, err)
+			items[i].Status = restoreFailed
 			continue
 		}
 		restored++
-		success("已还原 %s", it.Name)
+		items[i].Status = restoreSuccess
+		success("已还原 %s", items[i].Name)
 	}
 
 	if cfg.GhScoopProxyBackup != "" {
@@ -153,17 +169,17 @@ func runReset() {
 		}
 	}
 
-	printResetSummary(restored, items)
+	printRestoreSummary(restored, items, true)
 }
 
-func printResetSummary(restored int, items []resetItem) {
+func printRestoreSummary(restored int, items []restoreItem, showStatus bool) {
 	if restored == 0 {
-		info("Manifest to Reset: 0")
+		info("Manifest to restore: 0")
 		return
 	}
-	info("Manifest to Reset: %d", restored)
+	info("Manifest to restore: %d", restored)
 
-	nameW, bucketW := len("Name"), len("Bucket")
+	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
 	for _, it := range items {
 		if len(it.Name) > nameW {
 			nameW = len(it.Name)
@@ -171,13 +187,32 @@ func printResetSummary(restored int, items []resetItem) {
 		if len(it.Bucket) > bucketW {
 			bucketW = len(it.Bucket)
 		}
+		if showStatus && len(string(it.Status)) > statusW {
+			statusW = len(string(it.Status))
+		}
 	}
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
-	fmt.Printf(rowFmt, "Name", "Bucket")
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
-	fmt.Println()
-	for _, it := range items {
-		fmt.Printf(rowFmt, it.Name, it.Bucket)
+
+	if showStatus {
+		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
+		fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
+		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
+		fmt.Println()
+		for _, it := range items {
+			status := string(it.Status)
+			if status == "" {
+				status = "Skipped"
+			}
+			c := pickColor(status)
+			c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, status)
+		}
+	} else {
+		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
+		fmt.Printf(rowFmt, "App Name", "Bucket Name")
+		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
+		fmt.Println()
+		for _, it := range items {
+			fmt.Printf(rowFmt, it.Name, it.Bucket)
+		}
 	}
 }
 
@@ -192,9 +227,12 @@ func runStatus() {
 		os.Exit(1)
 	}
 
-	// 第一部分：reset 明细（待还原的 backup）
-	resetItems := collectResetItems(cfg.RootPath)
-	printResetSummary(len(resetItems), resetItems)
+	// 第一部分：restore 明细（dry-run：不实际还原，Status 全为 Skipped）
+	resetItems := collectRestoreItems(cfg.RootPath)
+	for i := range resetItems {
+		resetItems[i].Status = restoreSkipped
+	}
+	printRestoreSummary(len(resetItems), resetItems, true)
 
 	// 第二部分：set 明细（按还原后状态判断）
 	rows, err := parseScoopStatus()
@@ -209,7 +247,7 @@ func runStatus() {
 	}
 	setCount := 0
 	for _, r := range results {
-		if r.ProxyStatus == "Is github" {
+		if r.ProxyStatus == string(StatusIsGitHub) {
 			setCount++
 		}
 	}
@@ -221,9 +259,8 @@ func runStatus() {
 // 共享：manifest 定位
 // ---------------------------------------------------------------------------
 
-// findManifest 读取 apps\<name>\current\install.json 获取 bucket，
-// 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找
-func findManifest(rootPath, appName string) string {
+// findBucket 读取 apps\<name>\current\install.json 获取 bucket 名
+func findBucket(rootPath, appName string) string {
 	installPath := filepath.Join(rootPath, "apps", appName, "current", "install.json")
 	data, err := os.ReadFile(installPath)
 	if err != nil {
@@ -232,13 +269,24 @@ func findManifest(rootPath, appName string) string {
 	var install struct {
 		Bucket string `json:"bucket"`
 	}
-	if err := json.Unmarshal(data, &install); err != nil || install.Bucket == "" {
+	if err := json.Unmarshal(data, &install); err != nil {
+		return ""
+	}
+	return install.Bucket
+}
+
+// findManifest 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找
+func findManifest(rootPath, appName, bucket string) string {
+	if bucket == "" {
+		bucket = findBucket(rootPath, appName)
+	}
+	if bucket == "" {
 		return ""
 	}
 	bucketsBase := filepath.Join(rootPath, "buckets")
 	for _, candidate := range []string{
-		filepath.Join(bucketsBase, install.Bucket, "bucket", appName+".json"),
-		filepath.Join(bucketsBase, install.Bucket, appName+".json"),
+		filepath.Join(bucketsBase, bucket, "bucket", appName+".json"),
+		filepath.Join(bucketsBase, bucket, appName+".json"),
 	} {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
@@ -253,13 +301,14 @@ func findManifest(rootPath, appName string) string {
 
 func printSetTable(results []statusRow) {
 	const (
-		hdrName  = "Name"
-		hdrVer   = "Installed Version"
-		hdrLate  = "Latest Version"
-		hdrProxy = "Proxy Status"
+		hdrName   = "App Name"
+		hdrVer    = "Installed Version"
+		hdrLate   = "Latest Version"
+		hdrBucket = "Bucket Name"
+		hdrStatus = "Status"
 	)
 
-	nameW, verW, lateW, proxyW := len(hdrName), len(hdrVer), len(hdrLate), len(hdrProxy)
+	nameW, verW, lateW, bucketW, statusW := len(hdrName), len(hdrVer), len(hdrLate), len(hdrBucket), len(hdrStatus)
 	for _, r := range results {
 		if len(r.Name) > nameW {
 			nameW = len(r.Name)
@@ -270,14 +319,17 @@ func printSetTable(results []statusRow) {
 		if len(r.Latest) > lateW {
 			lateW = len(r.Latest)
 		}
-		if len(r.ProxyStatus) > proxyW {
-			proxyW = len(r.ProxyStatus)
+		if len(r.Bucket) > bucketW {
+			bucketW = len(r.Bucket)
+		}
+		if len(r.ProxyStatus) > statusW {
+			statusW = len(r.ProxyStatus)
 		}
 	}
 
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, proxyW)
-	fmt.Printf(rowFmt, hdrName, hdrVer, hdrLate, hdrProxy)
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(verW), dashRun(lateW), dashRun(proxyW))
+	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, bucketW, statusW)
+	fmt.Printf(rowFmt, hdrName, hdrVer, hdrLate, hdrBucket, hdrStatus)
+	fmt.Printf(rowFmt, dashRun(nameW), dashRun(verW), dashRun(lateW), dashRun(bucketW), dashRun(statusW))
 	fmt.Println()
 
 	for _, r := range results {
@@ -286,7 +338,7 @@ func printSetTable(results []statusRow) {
 			status = "Not github"
 		}
 		c := pickColor(status)
-		c.Fprintf(os.Stdout, rowFmt, r.Name, r.Installed, r.Latest, status)
+		c.Fprintf(os.Stdout, rowFmt, r.Name, r.Installed, r.Latest, r.Bucket, status)
 	}
 }
 

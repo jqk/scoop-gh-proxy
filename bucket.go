@@ -7,17 +7,27 @@ import (
 	"strings"
 )
 
-// resetItem 一条待还原的 app 记录
-type resetItem struct {
+// restoreStatus 表示单条 restore 记录的结果
+type restoreStatus string
+
+const (
+	restoreSuccess restoreStatus = "Success"
+	restoreSkipped restoreStatus = "Skipped"
+	restoreFailed  restoreStatus = "Failed"
+)
+
+// restoreItem 一条待还原的 app 记录
+type restoreItem struct {
 	Name   string
 	Bucket string
-	Path   string // [app].json 的完整路径（backup 同目录）
+	Path   string        // [app].json 的完整路径（backup 同目录）
+	Status restoreStatus // 执行后填充
 }
 
-// collectResetItems 只读扫描，收集 buckets 下所有 *-gh-backup.json
-func collectResetItems(rootPath string) []resetItem {
+// collectRestoreItems 只读扫描，收集 buckets 下所有 *-gh-backup.json
+func collectRestoreItems(rootPath string) []restoreItem {
 	bucketsDir := filepath.Join(rootPath, "buckets")
-	var items []resetItem
+	var items []restoreItem
 
 	filepath.Walk(bucketsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -27,10 +37,8 @@ func collectResetItems(rootPath string) []resetItem {
 			return nil // 跳过非备份文件
 		}
 
-		// info.Name() 是不含路径的文件名
-		// path 是包含路径的完整文件名
 		appName := stripBackupSuffix(info.Name())
-		items = append(items, resetItem{
+		items = append(items, restoreItem{
 			Name:   appName,
 			Bucket: deriveBucketFromPath(bucketsDir, path),
 			Path:   stripBackupSuffix(path),

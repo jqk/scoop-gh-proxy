@@ -45,39 +45,14 @@ scoop-gh-proxy --version
 - 再执行 set 命令
 - 但两者均不执行实际修改操作
 
-## 四、 获取并校验 scoop config 信息
+## 四、 功能
 
-通过执行 `scoop config` 命令，获取所需配置：
+### 4.1 set
 
-- root_path
-- proxy
-- gh_scoop_proxy_backup
-- gh_proxy
-
-前两个参数是 scoop 使用的，后两个参数是本程序专用的。
-
-以下检查，均只针对 `set` 和 `restore` 命令。无论如何，不修改 `scoop config` 文件。
-
-### 4.1 root_path
-
-scoop 的安装目录。必须存在且不为空字符串，且目录存在，否则报错退出。
-
-### 4.2 proxy
-
-scoop 使用的代理信息。可以不存在或为空。
-
-### 4.3 gh_proxy
-
-必须存在且不为空字符串，否则报错退出。
-
-如果尾部没有 `/`，则加上。
-
-### 4.4 gh_scoop_proxy_backup
-
-- 如果 `proxy` 不存在或为空，本字段应亦不存在或为空。否则给出警告，但继续执行。
-- 如果 `proxy` 存在且不空，本字段必须存在且不为空字符串。否则给出警告，但继续执行。
-
-## 五、 set 命令
+- 清除 scoop config 中的 proxy 配置，避免和 github 专用代理冲突。
+- 设置 github 专用代理。
+- 此后可执行 `scoop update` 命令。
+- 执行完 `scoop update` 命令后，请执行 `restore` 命令恢复被修改的 scoop config。
 
 ```text
 执行 scoop config 获取并检查配置信息
@@ -133,17 +108,19 @@ uv      0.12.19           0.12.20
 ```text
 Manifest to Set: 4
 
-Name    Installed Version Latest Version Proxy Status
-----    ----------------- -------------- -------------------- ----
-alma    0.4.150           0.4.151        Not github
-cmirror 0.1.2                            Skipped
-git     2.55.0.5          2.56.0         Is github
-uv      0.12.19           0.12.20        Is github
+App Name    Installed Version Latest Version Bucket Name Status
+--------    ----------------- -------------- ----------- ------
+alma        0.4.150           0.4.151        ajqk        Not github
+cmirror     0.1.2                                        Skipped
+git         2.55.0.5          2.56.0         main        Is github
+uv          0.12.19           0.12.20        extras      Is github
 ```
 
 如果 `Manifest to Set: 0`，则无后续明细输出。
 
-## 六、 restore 命令
+### 4.2 restore 命令
+
+- 在执行完 `set` 命令及 `scoop update` 命令后，执行本命令，恢复被修改的 scoop config。
 
 ```text
 执行 scoop config 获取并检查配置信息
@@ -164,20 +141,54 @@ uv      0.12.19           0.12.20        Is github
 ```text
 Manifest to restore: 3
 
-Name    Bucket
-----    ----------------- 
-alma    lemon
-git     main
-uv      extras
+App Name    Bucket Name Status
+--------    ----------- ------
+alma        lemon       Success
+git         main        Skipped
+uv          extras      Failed
 ```
 
 如果 `Manifest to restore: 0`，则无后续明细输出。
 
-## 七、 status 命令
+### 4.3 status 命令
 
 先执行 restore 命令，后执行 set 命令，只不过不真正修改任何文件，只是输出要变更的明细。输出内容参见这两个命令。
 
-## 八、 JSON
+## 五、 获取并校验 scoop config 信息
+
+通过执行 `scoop config` 命令，获取所需配置：
+
+- root_path
+- proxy
+- gh_scoop_proxy_backup
+- gh_proxy
+
+前两个参数是 scoop 使用的，后两个参数是本程序专用的。
+
+以下检查，均只针对 `set` 和 `restore` 命令。无论如何，不修改 `scoop config` 文件。
+
+### 5.1 root_path
+
+scoop 的安装目录。必须存在且不为空字符串，且目录存在，否则报错退出。
+
+### 5.2 proxy
+
+scoop 使用的代理信息。可以不存在或为空。
+
+### 5.3 gh_proxy
+
+必须存在且不为空字符串，否则报错退出。
+
+如果尾部没有 `/`，则加上。
+
+### 5.4 gh_scoop_proxy_backup
+
+- 如果 `proxy` 不存在或为空，本字段应亦不存在或为空。否则给出警告，但继续执行。
+- 如果 `proxy` 存在且不空，本字段必须存在且不为空字符串。否则给出警告，但继续执行。
+
+## 六、 技术细节
+
+### 6.1 JSON
 
 不要预定义完整 Manifest Struct。程序只关心 Manifest 中的 url 字段。
 
@@ -213,14 +224,14 @@ json.MarshalIndent(manifest, "", "  ")
 
 但只要语意正确，scoop 可以正常使用即可。
 
-## 九、 彩色输出
+### 6.2 彩色输出
 
 - INFO：普通
 - SUCCESS：绿色
 - WARNING：黄色
 - ERROR：红色
 
-## 十、 程序组织结构
+### 6.3 程序组织结构
 
 ```text
 scoop-proxy/
