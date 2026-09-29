@@ -55,7 +55,7 @@ func runSet() {
 }
 
 // classifyAppForSet 只读分析，判断某个 app 的状态，不做任何修改。
-func classifyAppForSet(row statusRow, cfg scoopConfig) statusRow {
+func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 	if row.ProxyStatus == "Skipped" {
 		return row
 	}
@@ -89,7 +89,7 @@ func classifyAppForSet(row statusRow, cfg scoopConfig) statusRow {
 }
 
 // applySetForApp 执行备份 + 修改，返回是否成功。
-func applySetForApp(row statusRow, cfg scoopConfig) bool {
+func applySetForApp(row statusRow, cfg ScoopConfig) bool {
 	manifestPath := findManifest(cfg.RootPath, row.Name)
 	if manifestPath == "" {
 		return false
@@ -184,9 +184,6 @@ func collectResetItems(rootPath string) []resetItem {
 		return nil
 	})
 
-	if len(items) == 0 {
-		info("未找到任何 *-gh-backup.json，无需还原")
-	}
 	return items
 }
 
