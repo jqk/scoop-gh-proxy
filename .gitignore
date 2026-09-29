@@ -1,1 +1,8 @@
+# 1. 先忽略整个 .vscode 目录里的所有内容
+.vscode/*
+
+# 2. 再用 ! 把想保留的单独"捞"回来
+!.vscode/settings.json
+!.vscode/extensions.json
+
 *.exe
