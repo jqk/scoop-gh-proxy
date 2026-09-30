@@ -28,50 +28,89 @@ type StatusRow struct {
 }
 
 // parseScoopStatus 执行并解析 scoop status -l。
-// 规则：只处理只有 Name、Installed Version、Latest Version 的行（3 列），
-// 其它行（有 Info 列等）记录但标记为 Skipped。
+// 非空行第一行为标题行，第二行为分隔线，其余为数据行。
+// 按分隔线确定各列起始位置，据此切分每行数据。
 func parseScoopStatus() ([]StatusRow, error) {
 	out, err := exec.Command("scoop", "status", "-l").CombinedOutput()
 	if err != nil {
 		return nil, err
 	}
 
-	var rows []StatusRow
 	s := stripAnsi(string(out))
 	lines := strings.SplitSeq(s, "\n") // 分为两个语句是为了调试方便
 
+	var nonEmptyLines []string // 非空的，有内容的行
 	for line := range lines {
-		line := strings.TrimSpace(line)
-
-		if line == "" ||
-			strings.HasPrefix(line, "Name") ||
-			strings.HasPrefix(line, "----") {
-			continue // 跳过空行和标题行。
+		line = strings.TrimSpace(line)
+		if line != "" {
+			nonEmptyLines = append(nonEmptyLines, line)
 		}
+	}
+	if len(nonEmptyLines) < 2 { // 至少要有标题行和分隔线
+		return nil, nil
+	}
 
-		// 此处的解析是有问题的。
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue // 跳过少于 3 列的行。实际上不应该发生。
-		}
+	// 分隔线行的 "-" 字符位置决定了各列的起始位置，是有内容的第 2 行，且有 5 列
+	starts := findColumnStarts(nonEmptyLines[1])
+	if len(starts) < 5 {
+		return nil, nil
+	}
 
-		name := fields[0]
-		installed := fields[1]
-		latest := fields[2]
-
-		// 有超过 3 列（Missing 列或 Info 列有值）→ 跳过
-		if len(fields) > 3 {
-			rows = append(rows, StatusRow{
-				Name:      name,
-				Installed: installed,
-				Latest:    latest,
-				Status:    "Skipped",
-			})
-			continue
-		}
-
-		rows = append(rows, StatusRow{Name: name, Installed: installed, Latest: latest})
+	var rows []StatusRow
+	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
+		rows = append(rows, createStatusRow(line, starts))
 	}
 
 	return rows, nil
+}
+
+// findColumnStarts 根据分隔线确定 5 列的起始位置（按 "-" 分组）
+func findColumnStarts(sep string) (starts []int) {
+	length := len(sep)
+	i := 0
+
+	for i < length {
+		for sep[i] != '-' { // 跳过空格，找到下一个 "-" 的位置
+			i++
+		}
+		// 此时的 i 不会大于等于 length
+		starts = append(starts, i)
+
+		for i < length && sep[i] == '-' {
+			i++
+		}
+	}
+
+	return
+}
+
+// createStatusRow 按列起始位置切分一行，返回 StatusRow 结构体
+func createStatusRow(line string, starts []int) StatusRow {
+	length := len(line)
+	cut := func(a, b int) string {
+		if a >= length {
+			return ""
+		}
+		end := min(b, length)
+		if a >= end {
+			return ""
+		}
+		
+		return strings.TrimSpace(line[a:end])
+	}
+
+	row := StatusRow{
+		Name:      cut(starts[0], starts[1]),
+		Installed: cut(starts[1], starts[2]),
+		Latest:    cut(starts[2], starts[3]),
+		Missing:   cut(starts[3], starts[4]),
+		Info:      cut(starts[4], length),
+		Status:    StatusIsGitHub, // 大多数都是 github 的，先假设是 github，后续再判断
+	}
+
+	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" {
+		row.Status = StatusSkipped
+	}
+
+	return row
 }
