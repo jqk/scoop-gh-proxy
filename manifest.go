@@ -32,11 +32,11 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub
 	changed = false
 
 	if url, ok := m["url"]; ok && downloadLinkIsGitHub(url) {
-		if dryRun {
-			return true, false
+		isGitHub = true
+		if !dryRun && patchURLValue(&url, ghProxy) {
+			m["url"] = url
+			changed = true
 		}
-
-		return true, patchURLValue(&url, ghProxy)
 	}
 
 	if arch, ok := m["architecture"].(map[string]any); ok {
@@ -48,10 +48,10 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub
 
 			if url, ok := av["url"]; ok && downloadLinkIsGitHub(url) {
 				isGitHub = true
-				if dryRun {
-					return true, false
+				if !dryRun && patchURLValue(&url, ghProxy) {
+					av["url"] = url
+					changed = true
 				}
-				changed = patchURLValue(&url, ghProxy) || changed
 			}
 		}
 	}
@@ -112,11 +112,16 @@ func patchManifestURLs(m map[string]any, ghProxy string) bool {
 	return changed
 }
 
-// patchURLValue 就地修改 url 值（string 或 []string）
+// patchURLValue 就地修改 url 值（string 或 []string），结果写回 *v
 func patchURLValue(v *any, ghProxy string) bool {
-	switch u := (*v).(type) {
+	cur := *v
+	switch u := cur.(type) {
 	case string:
-		return patchSingleURL(&u, ghProxy)
+		changed := patchSingleURL(&u, ghProxy)
+		if changed {
+			*v = u
+		}
+		return changed
 	case []any:
 		changed := false
 		for i, item := range u {
@@ -126,6 +131,9 @@ func patchURLValue(v *any, ghProxy string) bool {
 				}
 				u[i] = s
 			}
+		}
+		if changed {
+			*v = u
 		}
 		return changed
 	default:
