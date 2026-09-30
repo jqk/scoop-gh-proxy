@@ -115,7 +115,7 @@ func createSetCommandItem(line string, starts []int, rootPath string) SetCommand
 	row.Bucket = findBucket(rootPath, row.Name)
 	row.Manifest = findManifest(rootPath, row.Name, row.Bucket)
 	if row.Manifest != "" {
-		row.ManifestBackup = appendBackupSuffix(row.Manifest)
+		row.ManifestBackup = createManifestBackupName(row.Manifest)
 	}
 
 	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" {

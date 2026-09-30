@@ -80,8 +80,12 @@ func runRestore(dryRun bool) {
 		os.Exit(1)
 	}
 
-	// items := collectRestoreItems(cfg.RootPath)
-	items := findRestoreItems(cfg.RootPath)
+	items, err := findRestoreCommandItems(cfg.RootPath)
+	if err != nil {
+		error_("%s", err)
+		os.Exit(1)
+	}
+
 	restored := 0
 
 	if !dryRun {

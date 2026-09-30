@@ -13,7 +13,7 @@ func stripAnsi(s string) string {
 }
 
 // fileExists 判断文件是否存在
-func fileExists(path string) bool { // TODO
+func fileExists(path string) bool {
 	if _, err := os.Stat(path); err == nil { // 文件存在
 		return true
 	}
