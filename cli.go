@@ -40,7 +40,7 @@ func runSet(dryRun bool) {
 			modified++
 
 			if !dryRun {
-			    if err := backupManifest(&r); err != nil {
+				if err := backupManifest(&r); err != nil {
 					warning("备份 %s 失败: %v", r.Name, err)
 				}
 			}
@@ -130,24 +130,28 @@ func runRestore(dryRun bool) {
 		os.Exit(1)
 	}
 
-	items := collectRestoreItems(cfg.RootPath)
+	// items := collectRestoreItems(cfg.RootPath)
+	items := findRestoreItems(cfg.RootPath)
 	restored := 0
-	for i := range items {
-		if err := restoreAppJSON(items[i].Path); err != nil {
-			error_("还原 %s 失败: %v", items[i].Name, err)
-			items[i].Status = RestoreFailed
-			continue
-		}
-		restored++
-		items[i].Status = RestoreSuccess
-		success("已还原 %s", items[i].Name)
-	}
 
-	if cfg.GhScoopProxyBackup != "" {
-		if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
-			warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
-		} else {
-			success("已执行 scoop config proxy %s", cfg.GhScoopProxyBackup)
+	if !dryRun {
+		for i := range items {
+			// if err := restoreAppJSON(items[i].ManifestBackup); err != nil {
+			if err:= restoreManifest(&items[i]); err != nil {
+				error_("还原 %s 失败: %v", items[i].Name, err)
+				continue
+			}
+
+			restored++
+			success("已还原 %s", items[i].Name)
+		}
+
+		if cfg.GhScoopProxyBackup != "" {
+			if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
+				warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
+			} else {
+				success("已执行 scoop config proxy %s", cfg.GhScoopProxyBackup)
+			}
 		}
 	}
 
@@ -203,39 +207,41 @@ func printRestoreSummary(restored int, items []RestoreCommandItem, showStatus bo
 // ---------------------------------------------------------------------------
 
 func runStatus() {
-	cfg, err := getScoopConfig()
-	if err != nil {
-		error_("%s", err)
-		os.Exit(1)
-	}
+	runRestore(true)
+	runSet(true)
+	// cfg, err := getScoopConfig()
+	// if err != nil {
+	// 	error_("%s", err)
+	// 	os.Exit(1)
+	// }
 
-	// 第一部分：restore 明细（dry-run：不实际还原，Status 全为 Skipped）
-	resetItems := collectRestoreItems(cfg.RootPath)
-	for i := range resetItems {
-		resetItems[i].Status = RestoreSkipped
-	}
-	printRestoreSummary(len(resetItems), resetItems, true)
+	// // 第一部分：restore 明细（dry-run：不实际还原，Status 全为 Skipped）
+	// resetItems := collectRestoreItems(cfg.RootPath)
+	// for i := range resetItems {
+	// 	resetItems[i].Status = RestoreSkipped
+	// }
+	// printRestoreSummary(len(resetItems), resetItems, true)
 
-	// 第二部分：set 明细（按还原后状态判断）
-	rows, err := parseScoopStatus(cfg.RootPath)
-	if err != nil {
-		error_("执行 scoop status -l 失败: %v", err)
-		os.Exit(1)
-	}
+	// // 第二部分：set 明细（按还原后状态判断）
+	// rows, err := parseScoopStatus(cfg.RootPath)
+	// if err != nil {
+	// 	error_("执行 scoop status -l 失败: %v", err)
+	// 	os.Exit(1)
+	// }
 
-	results := make([]SetCommandItem, 0, len(rows))
-	for _, row := range rows {
-		results = append(results, classifyAppForSet(row, cfg))
-	}
+	// results := make([]SetCommandItem, 0, len(rows))
+	// for _, row := range rows {
+	// 	results = append(results, classifyAppForSet(row, cfg))
+	// }
 
-	setCount := 0
-	for _, r := range results {
-		if r.Status == IsGitHub {
-			setCount++
-		}
-	}
-	fmt.Println()
-	printSetSummary(setCount, results)
+	// setCount := 0
+	// for _, r := range results {
+	// 	if r.Status == IsGitHub {
+	// 		setCount++
+	// 	}
+	// }
+	// fmt.Println()
+	// printSetSummary(setCount, results)
 }
 
 // ---------------------------------------------------------------------------

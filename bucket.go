@@ -19,10 +19,20 @@ const (
 
 // RestoreCommandItem 一条待还原的 app 记录
 type RestoreCommandItem struct {
-	Name   string
-	Bucket string
-	Path   string               // [app].json 的完整路径（backup 同目录）
-	Status RestoreCommandStatus // 执行后填充
+	Name           string               // 应用名
+	Bucket         string               // 桶名
+	Manifest       string               // manifest 文件名
+	ManifestBackup string               // manifest 备份文件名
+	Status         RestoreCommandStatus // 执行后填充
+}
+
+func NewRestoreCommandItem(name, bucket, manifestDir string) RestoreCommandItem {
+	return RestoreCommandItem{
+		Name:           name,
+		Bucket:         bucket,
+		Manifest:       filepath.Join(manifestDir, name+".json"),
+		ManifestBackup: filepath.Join(manifestDir, name+backupSuffix),
+	}
 }
 
 const backupSuffix = "-gh-backup.json"
@@ -49,6 +59,75 @@ func backupManifest(item *SetCommandItem) error {
 	return os.WriteFile(item.Manifest, out, 0644)
 }
 
+func restoreManifest(item *RestoreCommandItem) error {
+	if err := os.Remove(item.Manifest); err != nil && !os.IsNotExist(err) {
+		item.Status = RestoreFailed
+		return err
+	}
+
+	if err := os.Rename(item.ManifestBackup, item.Manifest); err != nil { // 备份
+		item.Status = RestoreFailed
+		return err
+	}
+
+	item.Status = RestoreSuccess
+	return nil
+}
+
+// findRestoreItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
+func findRestoreItems(rootPath string) []RestoreCommandItem {
+	bucketsDir := filepath.Join(rootPath, "buckets")
+	var items []RestoreCommandItem
+
+	entries, err := os.ReadDir(bucketsDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue // 跳过非目录
+		}
+
+		bucketName := entry.Name()
+		bucketDir := filepath.Join(bucketsDir, bucketName)
+		bucketEntries, err := os.ReadDir(bucketDir)
+		if err != nil {
+			continue
+		}
+
+		for _, bucketEntry := range bucketEntries {
+			bucketEntryName := bucketEntry.Name()
+
+			if bucketEntry.IsDir() { // 优先处理目录，因为大多数桶都是 buckets\<bucket>\bucket\<app>.json 这种结构
+				if bucketEntryName == "bucket" {
+					dir := filepath.Join(bucketDir, "bucket")
+					filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+						if err != nil || info.IsDir() {
+							return nil // 继续处理
+						}
+						if !strings.HasSuffix(info.Name(), backupSuffix) {
+							return nil // 跳过非备份文件，继续处理
+						}
+
+						appName := strings.TrimSuffix(info.Name(), backupSuffix)
+						items = append(items, NewRestoreCommandItem(appName, bucketName, dir))
+						return nil
+					})
+				}
+
+				continue
+			}
+
+			if appName, ok := strings.CutSuffix(bucketEntryName, backupSuffix); ok {
+				items = append(items, NewRestoreCommandItem(appName, bucketName, bucketDir))
+			}
+		}
+	}
+
+	return items
+}
+
 // collectRestoreItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
 func collectRestoreItems(rootPath string) []RestoreCommandItem {
 	bucketsDir := filepath.Join(rootPath, "buckets")
@@ -64,9 +143,9 @@ func collectRestoreItems(rootPath string) []RestoreCommandItem {
 
 		appName := stripBackupSuffix(info.Name())
 		items = append(items, RestoreCommandItem{
-			Name:   appName,
-			Bucket: deriveBucketFromPath(bucketsDir, path),
-			Path:   stripBackupSuffix(path),
+			Name:           appName,
+			Bucket:         deriveBucketFromPath(bucketsDir, path),
+			ManifestBackup: stripBackupSuffix(path),
 		})
 		return nil
 	})
