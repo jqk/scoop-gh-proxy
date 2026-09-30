@@ -27,6 +27,28 @@ type RestoreCommandItem struct {
 
 const backupSuffix = "-gh-backup.json"
 
+func backupManifest(item *SetCommandItem) error {
+	if item.Status != IsGitHub {
+		return nil // 不是 github 的，跳过
+	}
+	if fileExists(item.ManifestBackup) {
+		item.Status = BackupExists
+		return nil // 备份文件已存在，跳过
+	}
+
+	if err := os.Rename(item.Manifest, item.ManifestBackup); err != nil { // 备份
+		item.Status = ManifestError
+		return err
+	}
+
+	out, err := json.MarshalIndent(item.ChangedManifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	return os.WriteFile(item.Manifest, out, 0644)
+}
+
 // collectRestoreItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
 func collectRestoreItems(rootPath string) []RestoreCommandItem {
 	bucketsDir := filepath.Join(rootPath, "buckets")

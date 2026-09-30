@@ -8,6 +8,57 @@ import (
 
 const githubURLPrefix = "https://github.com"
 
+func patchManifest(item *SetCommandItem, ghProxy string, dryRun bool) (isGitHub bool, err error) {
+	data, err := os.ReadFile(item.Manifest) // 读取 manifest 文件
+	if err != nil {
+		item.Status = ManifestError
+		return false, err
+	}
+
+	var m map[string]any
+	if err = json.Unmarshal(data, &m); err != nil { // 解析 json
+		item.Status = ManifestError
+		return false, err
+	}
+
+	isGitHub, _ = patchDownloadLinks(m, ghProxy, dryRun)
+	item.ChangedManifest = m
+
+	return isGitHub, nil
+}
+
+func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub bool, changed bool) {
+	isGitHub = false
+	changed = false
+
+	if url, ok := m["url"]; ok && downloadLinkIsGitHub(url) {
+		if dryRun {
+			return true, false
+		}
+
+		return true, patchURLValue(&url, ghProxy)
+	}
+
+	if arch, ok := m["architecture"].(map[string]any); ok {
+		for _, archVal := range arch {
+			av, ok := archVal.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			if url, ok := av["url"]; ok && downloadLinkIsGitHub(url) {
+				isGitHub = true
+				if dryRun {
+					return true, false
+				}
+				changed = patchURLValue(&url, ghProxy) || changed
+			}
+		}
+	}
+
+	return isGitHub, changed
+}
+
 // patchGitHubURLs 将 manifest 中所有以 https://github.com 开头的 url
 // 前面加上 ghProxy 前缀。返回是否实际修改。
 // 只修改一级 url 和 architecture.xxx.url；值可以是 string 或 []string。
@@ -106,7 +157,7 @@ func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
 		return false, err
 	}
 
-	if v, ok := m["url"]; ok && contentHasGitHubPrefix(v) {
+	if v, ok := m["url"]; ok && downloadLinkIsGitHub(v) {
 		return true, nil
 	}
 	if arch, ok := m["architecture"].(map[string]any); ok {
@@ -115,7 +166,7 @@ func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
 			if !ok {
 				continue
 			}
-			if v, exists := av["url"]; exists && contentHasGitHubPrefix(v) {
+			if v, exists := av["url"]; exists && downloadLinkIsGitHub(v) {
 				return true, nil
 			}
 		}
@@ -123,7 +174,7 @@ func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
 	return false, nil
 }
 
-func contentHasGitHubPrefix(v any) bool {
+func downloadLinkIsGitHub(v any) bool {
 	switch u := v.(type) {
 	case string:
 		return strings.HasPrefix(u, githubURLPrefix)

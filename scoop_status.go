@@ -10,25 +10,26 @@ import (
 type SetCommandStatus string
 
 const (
-	NotGitHub    SetCommandStatus = "Not github"             // 下载链接不是 github 的
-	SetSkipped   SetCommandStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过
-	IsGitHub     SetCommandStatus = "Is github"              // 下载链接是 github 的
-	NoManifes    SetCommandStatus = "Manifest not found"     // manifest 文件不存在
-	ManifesError SetCommandStatus = "Manifest error"         // manifest 文件存在但读取失败
-	BackupExists SetCommandStatus = "Manifest backup exists" // manifest 备份已存在
+	NotGitHub     SetCommandStatus = "Not github"             // 下载链接不是 github 的
+	SetSkipped    SetCommandStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过
+	IsGitHub      SetCommandStatus = "Is github"              // 下载链接是 github 的
+	NoManifest    SetCommandStatus = "Manifest not found"     // manifest 文件不存在
+	ManifestError SetCommandStatus = "Manifest error"         // manifest 文件存在但读取失败
+	BackupExists  SetCommandStatus = "Manifest backup exists" // manifest 备份已存在
 )
 
 // SetCommandItem 对应 scoop status -l 中一行 app 记录，还有本程序的属性
 type SetCommandItem struct {
-	Name           string           // scoop status -l 返回信息行：应用名
-	Installed      string           // scoop status -l 返回信息行：已安装版本
-	Latest         string           // scoop status -l 返回信息行：最新版本
-	Missing        string           // scoop status -l 返回信息行：缺失的依赖
-	Info           string           // scoop status -l 返回信息行：其它信息
-	Bucket         string           // 本程序的属性：桶名
-	Manifest       string           // 本程序的属性：manifest 文件名
-	ManifestBackup string           // 本程序的属性：manifest 备份文件名
-	Status         SetCommandStatus // 本程序的属性：状态值，将来定义为枚举
+	Name            string           // scoop status -l 返回信息行：应用名
+	Installed       string           // scoop status -l 返回信息行：已安装版本
+	Latest          string           // scoop status -l 返回信息行：最新版本
+	Missing         string           // scoop status -l 返回信息行：缺失的依赖
+	Info            string           // scoop status -l 返回信息行：其它信息
+	Bucket          string           // 本程序的属性：桶名
+	Manifest        string           // 本程序的属性：manifest 文件名
+	ManifestBackup  string           // 本程序的属性：manifest 备份文件名
+	Status          SetCommandStatus // 本程序的属性：状态值
+	ChangedManifest map[string]any   // 本程序的属性：manifest 更改后的内容
 }
 
 // parseScoopStatus 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。
@@ -120,7 +121,7 @@ func createSetCommandItem(line string, starts []int, rootPath string) SetCommand
 	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" {
 		row.Status = SetSkipped
 	} else if row.Bucket == "" || row.Manifest == "" {
-		row.Status = NoManifes
+		row.Status = NoManifest
 	}
 
 	return row

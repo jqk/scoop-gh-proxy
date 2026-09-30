@@ -12,7 +12,8 @@
             "mode": "debug",
             "program": "${workspaceFolder}",
             "args": [
-                "--status"
+                // "--status",
+                "--set",
             ],
         }
     ]

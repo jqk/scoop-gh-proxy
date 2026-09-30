@@ -13,7 +13,7 @@ import (
 // set
 // ---------------------------------------------------------------------------
 
-func runSet() {
+func runSet(dryRun bool) {
 	cfg, err := getScoopConfig()
 	if err != nil {
 		error_("%s", err)
@@ -26,35 +26,43 @@ func runSet() {
 		os.Exit(1)
 	}
 
-	results := make([]SetCommandItem, 0, len(rows))
-	for _, row := range rows {
-		results = append(results, classifyAppForSet(row, cfg))
-	}
-
 	modified := 0
-	for _, r := range results {
+	for _, r := range rows {
 		if r.Status != IsGitHub {
 			continue
 		}
-		if applySetForApp(r, cfg) {
+
+		isGitHub, err := patchManifest(&r, cfg.GhProxy, dryRun)
+		if err != nil {
+			return
+		}
+		if isGitHub {
 			modified++
+
+			if !dryRun {
+			    if err := backupManifest(&r); err != nil {
+					warning("备份 %s 失败: %v", r.Name, err)
+				}
+			}
 		}
 	}
 
-	if cfg.Proxy != "" {
-		if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil {
-			warning("scoop config rm proxy 失败: %v", err)
-		} else {
-			success("已执行 scoop config rm proxy")
+	if !dryRun {
+		if cfg.Proxy != "" {
+			if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil {
+				warning("scoop config rm proxy 失败: %v", err)
+			} else {
+				success("已执行 scoop config rm proxy")
+			}
 		}
 	}
 
-	printSetSummary(modified, results)
+	printSetSummary(modified, rows)
 }
 
 // classifyAppForSet 只读分析，判断某个 app 的状态，不做任何修改。
 func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
-	if row.Status == SetSkipped || row.Status == NoManifes {
+	if row.Status == SetSkipped || row.Status == NoManifest {
 		return row
 	} else if fileExists(row.ManifestBackup) { // 备份文件存在，说明已经执行过 set
 		row.Status = SetSkipped
@@ -64,7 +72,7 @@ func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
 	ghURL, err := manifestHasGitHubDownloadURL(row.Manifest)
 	if err != nil {
 		warning("读取 %s manifest 失败: %v", row.Name, err)
-		row.Status = ManifesError
+		row.Status = ManifestError
 		return row
 	}
 	if !ghURL {
@@ -115,7 +123,7 @@ func printSetSummary(modified int, results []SetCommandItem) {
 // restore
 // ---------------------------------------------------------------------------
 
-func runRestore() {
+func runRestore(dryRun bool) {
 	cfg, err := getScoopConfig()
 	if err != nil {
 		error_("%s", err)
@@ -219,6 +227,7 @@ func runStatus() {
 	for _, row := range rows {
 		results = append(results, classifyAppForSet(row, cfg))
 	}
+
 	setCount := 0
 	for _, r := range results {
 		if r.Status == IsGitHub {

@@ -19,9 +19,9 @@ func main() {
 	default:
 		switch os.Args[1] {
 		case "--set":
-			runSet()
+			runSet(false)
 		case "--restore":
-			runRestore()
+			runRestore(false)
 		case "--status":
 			runStatus()
 		case "--help", "-h":

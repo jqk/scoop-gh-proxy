@@ -45,6 +45,13 @@ func getScoopConfig() (ScoopConfig, error) {
 		return cfg, err
 	}
 
+	if cfg.Proxy != "" && cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为 set 命令会清空此值
+		_, err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Output() // 此处返回的是包含转义码在内的字节数组
+		if err != nil {
+			return cfg, fmt.Errorf("执行 scoop config gh_scoop_proxy_backup %s 失败: %w", cfg.Proxy, err)
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -77,24 +84,12 @@ func validateConfig(cfg *ScoopConfig) error {
 		return fmt.Errorf("scoop config 中 root_path 对应目录不存在: %s", cfg.RootPath)
 	}
 
-	// 5.2 proxy 可以为空，无需校验
 	// 5.3 gh_proxy
 	if cfg.GhProxy == "" {
 		return fmt.Errorf("scoop config 中 gh_proxy 不存在或为空")
 	}
-	if !strings.HasSuffix(cfg.GhProxy, "/") {
+	if cfg.GhProxy != "" && !strings.HasSuffix(cfg.GhProxy, "/") {
 		cfg.GhProxy += "/"
-	}
-
-	// 5.4 gh_scoop_proxy_backup 与 proxy 成对
-	hasProxy := cfg.Proxy != ""
-	hasBackup := cfg.GhScoopProxyBackup != ""
-
-	switch {
-	case !hasProxy && hasBackup:
-		warning("scoop config 中 proxy 为空，但 gh_scoop_proxy_backup 不为空")
-	case hasProxy && !hasBackup:
-		warning("scoop config 中 proxy 不为空，但 gh_scoop_proxy_backup 为空")
 	}
 
 	return nil
