@@ -59,9 +59,7 @@ func parseScoopStatus(rootPath string) ([]StatusRow, error) {
 
 	var rows []StatusRow
 	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
-		row := createStatusRow(line, starts)
-		row.Bucket = findBucket(rootPath, row.Name)
-		rows = append(rows, row)
+		rows = append(rows, createStatusRow(line, starts, rootPath))
 	}
 
 	return rows, nil
@@ -88,7 +86,7 @@ func findColumnStarts(sep string) (starts []int) {
 }
 
 // createStatusRow 按列起始位置切分一行，返回 StatusRow 结构体
-func createStatusRow(line string, starts []int) StatusRow {
+func createStatusRow(line string, starts []int, rootPath string) StatusRow {
 	length := len(line)
 	cut := func(a, b int) string {
 		if a >= length {
@@ -110,8 +108,9 @@ func createStatusRow(line string, starts []int) StatusRow {
 		Info:      cut(starts[4], length),
 		Status:    StatusIsGitHub, // 大多数都是 github 的，先假设是 github，后续再判断
 	}
+	row.Bucket = findBucket(rootPath, row.Name)
 
-	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" {
+	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" || row.Bucket == "" {
 		row.Status = StatusSkipped
 	}
 
