@@ -60,56 +60,6 @@ func runSet(dryRun bool) {
 	printSetSummary(modified, rows)
 }
 
-// classifyAppForSet 只读分析，判断某个 app 的状态，不做任何修改。
-func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
-	if row.Status == SetSkipped || row.Status == NoManifest {
-		return row
-	} else if fileExists(row.ManifestBackup) { // 备份文件存在，说明已经执行过 set
-		row.Status = SetSkipped
-		return row
-	}
-
-	ghURL, err := manifestHasGitHubDownloadURL(row.Manifest)
-	if err != nil {
-		warning("读取 %s manifest 失败: %v", row.Name, err)
-		row.Status = ManifestError
-		return row
-	}
-	if !ghURL {
-		row.Status = NotGitHub
-		return row
-	}
-
-	row.Status = IsGitHub
-	return row
-}
-
-// applySetForApp 执行备份 + 修改，返回是否成功。
-func applySetForApp(row SetCommandItem, cfg ScoopConfig) bool {
-	manifestPath := findManifest(cfg.RootPath, row.Name, row.Bucket)
-	if manifestPath == "" {
-		return false
-	}
-
-	ok, err := backupAppJSON(manifestPath)
-	if err != nil {
-		warning("备份 %s 失败: %v", row.Name, err)
-		return false
-	}
-	if !ok {
-		return false
-	}
-
-	if _, err := patchGitHubURLs(manifestPath, cfg.GhProxy); err != nil {
-		error_("修改 %s manifest 失败: %v，还原备份", row.Name, err)
-		_ = os.Rename(backupPath(manifestPath), manifestPath)
-		return false
-	}
-
-	success("已更新 %s", row.Name)
-	return true
-}
-
 func printSetSummary(modified int, results []SetCommandItem) {
 	if modified == 0 {
 		info("Manifest to Set: 0")
@@ -136,8 +86,7 @@ func runRestore(dryRun bool) {
 
 	if !dryRun {
 		for i := range items {
-			// if err := restoreAppJSON(items[i].ManifestBackup); err != nil {
-			if err:= restoreManifest(&items[i]); err != nil {
+			if err := restoreManifest(&items[i]); err != nil {
 				error_("还原 %s 失败: %v", items[i].Name, err)
 				continue
 			}
@@ -146,7 +95,7 @@ func runRestore(dryRun bool) {
 			success("已还原 %s", items[i].Name)
 		}
 
-		if cfg.GhScoopProxyBackup != "" {
+		if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
 			if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
 				warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
 			} else {
@@ -209,39 +158,6 @@ func printRestoreSummary(restored int, items []RestoreCommandItem, showStatus bo
 func runStatus() {
 	runRestore(true)
 	runSet(true)
-	// cfg, err := getScoopConfig()
-	// if err != nil {
-	// 	error_("%s", err)
-	// 	os.Exit(1)
-	// }
-
-	// // 第一部分：restore 明细（dry-run：不实际还原，Status 全为 Skipped）
-	// resetItems := collectRestoreItems(cfg.RootPath)
-	// for i := range resetItems {
-	// 	resetItems[i].Status = RestoreSkipped
-	// }
-	// printRestoreSummary(len(resetItems), resetItems, true)
-
-	// // 第二部分：set 明细（按还原后状态判断）
-	// rows, err := parseScoopStatus(cfg.RootPath)
-	// if err != nil {
-	// 	error_("执行 scoop status -l 失败: %v", err)
-	// 	os.Exit(1)
-	// }
-
-	// results := make([]SetCommandItem, 0, len(rows))
-	// for _, row := range rows {
-	// 	results = append(results, classifyAppForSet(row, cfg))
-	// }
-
-	// setCount := 0
-	// for _, r := range results {
-	// 	if r.Status == IsGitHub {
-	// 		setCount++
-	// 	}
-	// }
-	// fmt.Println()
-	// printSetSummary(setCount, results)
 }
 
 // ---------------------------------------------------------------------------

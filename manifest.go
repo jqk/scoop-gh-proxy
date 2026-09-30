@@ -59,33 +59,6 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub
 	return isGitHub, changed
 }
 
-// patchGitHubURLs 将 manifest 中所有以 https://github.com 开头的 url
-// 前面加上 ghProxy 前缀。返回是否实际修改。
-// 只修改一级 url 和 architecture.xxx.url；值可以是 string 或 []string。
-func patchGitHubURLs(manifestPath, ghProxy string) (bool, error) {
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return false, err
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return false, err
-	}
-
-	changed := patchManifestURLs(m, ghProxy)
-	if !changed {
-		return false, nil
-	}
-
-	out, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	out = append(out, '\n')
-	return true, os.WriteFile(manifestPath, out, 0644)
-}
-
 // patchManifestURLs 就地修改已解析的 manifest，返回是否有实际修改
 func patchManifestURLs(m map[string]any, ghProxy string) bool {
 	changed := false
@@ -152,34 +125,6 @@ func patchSingleURL(s *string, ghProxy string) bool {
 	}
 	*s = ghProxy + *s
 	return true
-}
-
-// manifestHasGitHubDownloadURL 判断 manifest 文件中是否至少有一个 github.com 下载链接
-func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return false, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return false, err
-	}
-
-	if v, ok := m["url"]; ok && downloadLinkIsGitHub(v) {
-		return true, nil
-	}
-	if arch, ok := m["architecture"].(map[string]any); ok {
-		for _, archVal := range arch {
-			av, ok := archVal.(map[string]any)
-			if !ok {
-				continue
-			}
-			if v, exists := av["url"]; exists && downloadLinkIsGitHub(v) {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
 }
 
 func downloadLinkIsGitHub(v any) bool {
