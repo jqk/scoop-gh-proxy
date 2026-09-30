@@ -56,6 +56,9 @@ func runSet() {
 func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
 	if row.Status == SetSkipped || row.Status == NoManifes {
 		return row
+	} else if fileExists(row.ManifestBackup) { // 备份文件存在，说明已经执行过 set
+		row.Status = SetSkipped
+		return row
 	}
 
 	ghURL, err := manifestHasGitHubDownloadURL(row.Manifest)
@@ -66,12 +69,6 @@ func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
 	}
 	if !ghURL {
 		row.Status = NotGitHub
-		return row
-	}
-
-	if fileExists(row.ManifestBackup) {
-		warning("%s 的备份文件已存在，跳过", row.Name)
-		row.Status = BackupExists
 		return row
 	}
 

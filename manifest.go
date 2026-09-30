@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const githubURLPrefix = "https://github.com"
+
 // patchGitHubURLs 将 manifest 中所有以 https://github.com 开头的 url
 // 前面加上 ghProxy 前缀。返回是否实际修改。
 // 只修改一级 url 和 architecture.xxx.url；值可以是 string 或 []string。
@@ -82,7 +84,7 @@ func patchURLValue(v *any, ghProxy string) bool {
 
 // patchSingleURL 修改单个 url 字符串，返回是否实际修改
 func patchSingleURL(s *string, ghProxy string) bool {
-	if !strings.HasPrefix(*s, "https://github.com") {
+	if !strings.HasPrefix(*s, githubURLPrefix) {
 		return false
 	}
 	// 已带 ghProxy 前缀 → 不重复修改
@@ -124,10 +126,10 @@ func manifestHasGitHubDownloadURL(manifestPath string) (bool, error) {
 func contentHasGitHubPrefix(v any) bool {
 	switch u := v.(type) {
 	case string:
-		return strings.HasPrefix(u, "https://github.com")
+		return strings.HasPrefix(u, githubURLPrefix)
 	case []any:
 		for _, item := range u {
-			if s, ok := item.(string); ok && strings.HasPrefix(s, "https://github.com") {
+			if s, ok := item.(string); ok && strings.HasPrefix(s, githubURLPrefix) {
 				return true
 			}
 		}
