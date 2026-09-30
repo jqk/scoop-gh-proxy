@@ -15,17 +15,6 @@ import (
 // set
 // ---------------------------------------------------------------------------
 
-// statusValue set 命令中 Proxy Status 列的枚举值
-type statusValue string
-
-const (
-	StatusNotGitHub    statusValue = "Not github"
-	StatusSkipped      statusValue = "Skipped"
-	StatusIsGitHub     statusValue = "Is github"
-	StatusManifestMiss statusValue = "Manifest not found"
-	StatusBackupExists statusValue = "Manifest backup exists"
-)
-
 func runSet() {
 	cfg, err := getScoopConfig()
 	if err != nil {
@@ -39,14 +28,14 @@ func runSet() {
 		os.Exit(1)
 	}
 
-	results := make([]statusRow, 0, len(rows))
+	results := make([]StatusRow, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, classifyAppForSet(row, cfg))
 	}
 
 	modified := 0
 	for _, r := range results {
-		if r.ProxyStatus != string(StatusIsGitHub) {
+		if r.Status != StatusIsGitHub {
 			continue
 		}
 		if applySetForApp(r, cfg) {
@@ -66,8 +55,8 @@ func runSet() {
 }
 
 // classifyAppForSet 只读分析，判断某个 app 的状态，不做任何修改。
-func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
-	if row.ProxyStatus == "Skipped" {
+func classifyAppForSet(row StatusRow, cfg ScoopConfig) StatusRow {
+	if row.Status == "Skipped" {
 		return row
 	}
 
@@ -77,33 +66,33 @@ func classifyAppForSet(row statusRow, cfg ScoopConfig) statusRow {
 	manifestPath := findManifest(cfg.RootPath, row.Name, bucket)
 	if manifestPath == "" {
 		warning("未找到 %s 的 manifest，跳过", row.Name)
-		row.ProxyStatus = string(StatusManifestMiss)
+		row.Status = StatusManifestMiss
 		return row
 	}
 
 	ghURL, err := manifestHasGitHubDownloadURL(manifestPath)
 	if err != nil {
 		warning("读取 %s manifest 失败: %v", row.Name, err)
-		row.ProxyStatus = "Skipped"
+		row.Status = "Skipped"
 		return row
 	}
 	if !ghURL {
-		row.ProxyStatus = string(StatusNotGitHub)
+		row.Status = StatusNotGitHub
 		return row
 	}
 
 	if _, err := os.Stat(backupPath(manifestPath)); err == nil {
 		warning("%s 的备份文件已存在，跳过", row.Name)
-		row.ProxyStatus = string(StatusBackupExists)
+		row.Status = StatusBackupExists
 		return row
 	}
 
-	row.ProxyStatus = string(StatusIsGitHub)
+	row.Status = StatusIsGitHub
 	return row
 }
 
 // applySetForApp 执行备份 + 修改，返回是否成功。
-func applySetForApp(row statusRow, cfg ScoopConfig) bool {
+func applySetForApp(row StatusRow, cfg ScoopConfig) bool {
 	manifestPath := findManifest(cfg.RootPath, row.Name, row.Bucket)
 	if manifestPath == "" {
 		return false
@@ -128,7 +117,7 @@ func applySetForApp(row statusRow, cfg ScoopConfig) bool {
 	return true
 }
 
-func printSetSummary(modified int, results []statusRow) {
+func printSetSummary(modified int, results []StatusRow) {
 	if modified == 0 {
 		info("Manifest to Set: 0")
 		return
@@ -241,13 +230,13 @@ func runStatus() {
 		os.Exit(1)
 	}
 
-	results := make([]statusRow, 0, len(rows))
+	results := make([]StatusRow, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, classifyAppForSet(row, cfg))
 	}
 	setCount := 0
 	for _, r := range results {
-		if r.ProxyStatus == string(StatusIsGitHub) {
+		if r.Status == StatusIsGitHub {
 			setCount++
 		}
 	}
@@ -299,7 +288,7 @@ func findManifest(rootPath, appName, bucket string) string {
 // 共享：set 结果表
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []statusRow) {
+func printSetTable(results []StatusRow) {
 	const (
 		hdrName   = "App Name"
 		hdrVer    = "Installed Version"
@@ -322,8 +311,8 @@ func printSetTable(results []statusRow) {
 		if len(r.Bucket) > bucketW {
 			bucketW = len(r.Bucket)
 		}
-		if len(r.ProxyStatus) > statusW {
-			statusW = len(r.ProxyStatus)
+		if len(r.Status) > statusW {
+			statusW = len(r.Status)
 		}
 	}
 
@@ -333,11 +322,11 @@ func printSetTable(results []statusRow) {
 	fmt.Println()
 
 	for _, r := range results {
-		status := r.ProxyStatus
+		status := r.Status
 		if status == "" {
 			status = "Not github"
 		}
-		c := pickColor(status)
+		c := pickColor(string(status))
 		c.Fprintf(os.Stdout, rowFmt, r.Name, r.Installed, r.Latest, r.Bucket, status)
 	}
 }
