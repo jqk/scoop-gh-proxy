@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -27,10 +28,10 @@ type StatusRow struct {
 	Status    SetCommondStatus // 本程序的属性：状态值，将来定义为枚举
 }
 
-// parseScoopStatus 执行并解析 scoop status -l。
+// parseScoopStatus 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。
 // 非空行第一行为标题行，第二行为分隔线，其余为数据行。
 // 按分隔线确定各列起始位置，据此切分每行数据。
-func parseScoopStatus() ([]StatusRow, error) {
+func parseScoopStatus(rootPath string) ([]StatusRow, error) {
 	out, err := exec.Command("scoop", "status", "-l").CombinedOutput()
 	if err != nil {
 		return nil, err
@@ -47,18 +48,20 @@ func parseScoopStatus() ([]StatusRow, error) {
 		}
 	}
 	if len(nonEmptyLines) < 2 { // 至少要有标题行和分隔线
-		return nil, nil
+		return nil, fmt.Errorf("scoop status -l 输出缺少标题行或分隔线")
 	}
 
 	// 分隔线行的 "-" 字符位置决定了各列的起始位置，是有内容的第 2 行，且有 5 列
 	starts := findColumnStarts(nonEmptyLines[1])
 	if len(starts) < 5 {
-		return nil, nil
+		return nil, fmt.Errorf("scoop status -l 分隔线列数不足 5，无法解析")
 	}
 
 	var rows []StatusRow
 	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
-		rows = append(rows, createStatusRow(line, starts))
+		row := createStatusRow(line, starts)
+		row.Bucket = findBucket(rootPath, row.Name)
+		rows = append(rows, row)
 	}
 
 	return rows, nil
@@ -95,7 +98,7 @@ func createStatusRow(line string, starts []int) StatusRow {
 		if a >= end {
 			return ""
 		}
-		
+
 		return strings.TrimSpace(line[a:end])
 	}
 

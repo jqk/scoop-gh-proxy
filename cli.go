@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,7 +21,7 @@ func runSet() {
 		os.Exit(1)
 	}
 
-	rows, err := parseScoopStatus()
+	rows, err := parseScoopStatus(cfg.RootPath)
 	if err != nil {
 		error_("执行 scoop status -l 失败: %v", err)
 		os.Exit(1)
@@ -224,7 +223,7 @@ func runStatus() {
 	printRestoreSummary(len(resetItems), resetItems, true)
 
 	// 第二部分：set 明细（按还原后状态判断）
-	rows, err := parseScoopStatus()
+	rows, err := parseScoopStatus(cfg.RootPath)
 	if err != nil {
 		error_("执行 scoop status -l 失败: %v", err)
 		os.Exit(1)
@@ -247,22 +246,6 @@ func runStatus() {
 // ---------------------------------------------------------------------------
 // 共享：manifest 定位
 // ---------------------------------------------------------------------------
-
-// findBucket 读取 apps\<name>\current\install.json 获取 bucket 名
-func findBucket(rootPath, appName string) string {
-	installPath := filepath.Join(rootPath, "apps", appName, "current", "install.json")
-	data, err := os.ReadFile(installPath)
-	if err != nil {
-		return ""
-	}
-	var install struct {
-		Bucket string `json:"bucket"`
-	}
-	if err := json.Unmarshal(data, &install); err != nil {
-		return ""
-	}
-	return install.Bucket
-}
 
 // findManifest 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找
 func findManifest(rootPath, appName, bucket string) string {

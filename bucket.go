@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -117,4 +118,20 @@ func findBackupFiles(dir string) ([]string, error) {
 // stripBackupSuffix 从 [app]-gh-backup.json 还原出 [app].json 的文件名
 func stripBackupSuffix(name string) string {
 	return strings.TrimSuffix(name, "-gh-backup.json") + ".json"
+}
+
+// findBucket 读取 apps\<name>\current\install.json 获取 bucket 名
+func findBucket(rootPath, appName string) string {
+	installPath := filepath.Join(rootPath, "apps", appName, "current", "install.json")
+	data, err := os.ReadFile(installPath)
+	if err != nil {
+		return ""
+	}
+	var install struct {
+		Bucket string `json:"bucket"`
+	}
+	if err := json.Unmarshal(data, &install); err != nil {
+		return ""
+	}
+	return install.Bucket
 }
