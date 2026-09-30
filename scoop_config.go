@@ -10,9 +10,9 @@ import (
 // ScoopConfig 是本程序用到的 scoop config 中定义的属性
 type ScoopConfig struct {
 	RootPath           string // scoop 使用的属性，定义 scoop 的根目录
-	Proxy              string // scoop 使用的属性，定义其 http 代理
-	GhScoopProxyBackup string // 本程序专用属性，备份 Proxy 值
-	GhProxy            string // 本程序专用属性，定义 github 数据代理
+	Proxy              string // scoop 使用的属性，定义 scoop update 命令使用的 http 代理。本程序的 set 命令会清空此值，restore 命令会恢复此值
+	GhScoopProxyBackup string // 本程序专用属性，备份 Proxy 值。restore 命令会使用此值恢复 Proxy
+	GhProxy            string // 本程序专用属性，定义面向 github 下载链接的数据代理
 }
 
 // getScoopConfig 执行 scoop config 命令，获取配置值。
@@ -23,11 +23,11 @@ func getScoopConfig() (ScoopConfig, error) {
 	}
 
 	cfg := ScoopConfig{}
-	s := stripAnsi(string(out)) // 分为两个语句是为了调试方便
-	lines := strings.SplitSeq(s, "\n")
+	s := stripAnsi(string(out))
+	lines := strings.SplitSeq(s, "\n") // 分为两个语句是为了调试方便
 
 	for line := range lines {
-		if key, val, found := getKeyValueFromLine(line); found {
+		if key, val, found := getKeyValue(line); found {
 			switch key {
 			case "root_path":
 				cfg.RootPath = val
@@ -48,8 +48,8 @@ func getScoopConfig() (ScoopConfig, error) {
 	return cfg, nil
 }
 
-// getKeyValueFromLine 分析行信息，得到 key 和 value 值
-func getKeyValueFromLine(line string) (key string, val string, found bool) {
+// getKeyValue 分析行信息，得到 key 和 value 值
+func getKeyValue(line string) (key string, val string, found bool) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return "", "", false
@@ -69,7 +69,7 @@ func getKeyValueFromLine(line string) (key string, val string, found bool) {
 
 // validateConfig 校验 ScoopConfig 对象的属性
 func validateConfig(cfg *ScoopConfig) error {
-	// 3.1 root_path
+	// 5.1 root_path
 	if cfg.RootPath == "" {
 		return fmt.Errorf("scoop config 中 root_path 不存在或为空")
 	}
@@ -77,8 +77,8 @@ func validateConfig(cfg *ScoopConfig) error {
 		return fmt.Errorf("scoop config 中 root_path 对应目录不存在: %s", cfg.RootPath)
 	}
 
-	// 3.2 proxy 可以为空，无需校验
-	// 3.3 gh_proxy
+	// 5.2 proxy 可以为空，无需校验
+	// 5.3 gh_proxy
 	if cfg.GhProxy == "" {
 		return fmt.Errorf("scoop config 中 gh_proxy 不存在或为空")
 	}
@@ -86,7 +86,7 @@ func validateConfig(cfg *ScoopConfig) error {
 		cfg.GhProxy += "/"
 	}
 
-	// 3.4 gh_scoop_proxy_backup 与 proxy 成对
+	// 5.4 gh_scoop_proxy_backup 与 proxy 成对
 	hasProxy := cfg.Proxy != ""
 	hasBackup := cfg.GhScoopProxyBackup != ""
 
