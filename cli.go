@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -27,14 +26,14 @@ func runSet() {
 		os.Exit(1)
 	}
 
-	results := make([]StatusRow, 0, len(rows))
+	results := make([]SetCommandItem, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, classifyAppForSet(row, cfg))
 	}
 
 	modified := 0
 	for _, r := range results {
-		if r.Status != StatusIsGitHub {
+		if r.Status != IsGitHub {
 			continue
 		}
 		if applySetForApp(r, cfg) {
@@ -54,44 +53,34 @@ func runSet() {
 }
 
 // classifyAppForSet 只读分析，判断某个 app 的状态，不做任何修改。
-func classifyAppForSet(row StatusRow, cfg ScoopConfig) StatusRow {
-	if row.Status == "Skipped" {
+func classifyAppForSet(row SetCommandItem, cfg ScoopConfig) SetCommandItem {
+	if row.Status == SetSkipped || row.Status == NoManifes {
 		return row
 	}
 
-	bucket := findBucket(cfg.RootPath, row.Name)
-	row.Bucket = bucket
-
-	manifestPath := findManifest(cfg.RootPath, row.Name, bucket)
-	if manifestPath == "" {
-		warning("未找到 %s 的 manifest，跳过", row.Name)
-		row.Status = StatusManifestMiss
-		return row
-	}
-
-	ghURL, err := manifestHasGitHubDownloadURL(manifestPath)
+	ghURL, err := manifestHasGitHubDownloadURL(row.Manifest)
 	if err != nil {
 		warning("读取 %s manifest 失败: %v", row.Name, err)
-		row.Status = "Skipped"
+		row.Status = ManifesError
 		return row
 	}
 	if !ghURL {
-		row.Status = StatusNotGitHub
+		row.Status = NotGitHub
 		return row
 	}
 
-	if _, err := os.Stat(backupPath(manifestPath)); err == nil {
+	if fileExists(row.ManifestBackup) {
 		warning("%s 的备份文件已存在，跳过", row.Name)
-		row.Status = StatusBackupExists
+		row.Status = BackupExists
 		return row
 	}
 
-	row.Status = StatusIsGitHub
+	row.Status = IsGitHub
 	return row
 }
 
 // applySetForApp 执行备份 + 修改，返回是否成功。
-func applySetForApp(row StatusRow, cfg ScoopConfig) bool {
+func applySetForApp(row SetCommandItem, cfg ScoopConfig) bool {
 	manifestPath := findManifest(cfg.RootPath, row.Name, row.Bucket)
 	if manifestPath == "" {
 		return false
@@ -116,7 +105,7 @@ func applySetForApp(row StatusRow, cfg ScoopConfig) bool {
 	return true
 }
 
-func printSetSummary(modified int, results []StatusRow) {
+func printSetSummary(modified int, results []SetCommandItem) {
 	if modified == 0 {
 		info("Manifest to Set: 0")
 		return
@@ -141,11 +130,11 @@ func runRestore() {
 	for i := range items {
 		if err := restoreAppJSON(items[i].Path); err != nil {
 			error_("还原 %s 失败: %v", items[i].Name, err)
-			items[i].Status = restoreFailed
+			items[i].Status = RestoreFailed
 			continue
 		}
 		restored++
-		items[i].Status = restoreSuccess
+		items[i].Status = RestoreSuccess
 		success("已还原 %s", items[i].Name)
 	}
 
@@ -160,7 +149,7 @@ func runRestore() {
 	printRestoreSummary(restored, items, true)
 }
 
-func printRestoreSummary(restored int, items []restoreItem, showStatus bool) {
+func printRestoreSummary(restored int, items []RestoreCommandItem, showStatus bool) {
 	if restored == 0 {
 		info("Manifest to restore: 0")
 		return
@@ -218,7 +207,7 @@ func runStatus() {
 	// 第一部分：restore 明细（dry-run：不实际还原，Status 全为 Skipped）
 	resetItems := collectRestoreItems(cfg.RootPath)
 	for i := range resetItems {
-		resetItems[i].Status = restoreSkipped
+		resetItems[i].Status = RestoreSkipped
 	}
 	printRestoreSummary(len(resetItems), resetItems, true)
 
@@ -229,13 +218,13 @@ func runStatus() {
 		os.Exit(1)
 	}
 
-	results := make([]StatusRow, 0, len(rows))
+	results := make([]SetCommandItem, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, classifyAppForSet(row, cfg))
 	}
 	setCount := 0
 	for _, r := range results {
-		if r.Status == StatusIsGitHub {
+		if r.Status == IsGitHub {
 			setCount++
 		}
 	}
@@ -247,31 +236,11 @@ func runStatus() {
 // 共享：manifest 定位
 // ---------------------------------------------------------------------------
 
-// findManifest 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找
-func findManifest(rootPath, appName, bucket string) string {
-	if bucket == "" {
-		bucket = findBucket(rootPath, appName)
-	}
-	if bucket == "" {
-		return ""
-	}
-	bucketsBase := filepath.Join(rootPath, "buckets")
-	for _, candidate := range []string{
-		filepath.Join(bucketsBase, bucket, "bucket", appName+".json"),
-		filepath.Join(bucketsBase, bucket, appName+".json"),
-	} {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return ""
-}
-
 // ---------------------------------------------------------------------------
 // 共享：set 结果表
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []StatusRow) {
+func printSetTable(results []SetCommandItem) {
 	const (
 		hdrName   = "App Name"
 		hdrVer    = "Installed Version"
