@@ -41,15 +41,12 @@ func getScoopConfig() (ScoopConfig, error) {
 		}
 	}
 
-	if err := validateConfig(&cfg); err != nil {
-		return cfg, err
+	if cfg.GhProxy != "" && !strings.HasSuffix(cfg.GhProxy, "/") {
+		cfg.GhProxy += "/" // 处理后可直接使用，不必再判断、添加
 	}
 
-	if cfg.Proxy != "" && cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为 set 命令会清空此值
-		_, err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Output() // 此处返回的是包含转义码在内的字节数组
-		if err != nil {
-			return cfg, fmt.Errorf("执行 scoop config gh_scoop_proxy_backup %s 失败: %w", cfg.Proxy, err)
-		}
+	if err := validateConfig(&cfg); err != nil {
+		return cfg, err
 	}
 
 	return cfg, nil
@@ -87,9 +84,6 @@ func validateConfig(cfg *ScoopConfig) error {
 	// 5.3 gh_proxy
 	if cfg.GhProxy == "" {
 		return fmt.Errorf("scoop config 中 gh_proxy 不存在或为空")
-	}
-	if cfg.GhProxy != "" && !strings.HasSuffix(cfg.GhProxy, "/") {
-		cfg.GhProxy += "/"
 	}
 
 	return nil

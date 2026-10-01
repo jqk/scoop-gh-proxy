@@ -59,32 +59,6 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub
 	return isGitHub, changed
 }
 
-// patchManifestURLs 就地修改已解析的 manifest，返回是否有实际修改
-func patchManifestURLs(m map[string]any, ghProxy string) bool {
-	changed := false
-
-	if v, ok := m["url"]; ok {
-		changed = patchURLValue(&v, ghProxy) || changed
-		m["url"] = v
-	}
-
-	if arch, ok := m["architecture"].(map[string]any); ok {
-		for key, archVal := range arch {
-			av, ok := archVal.(map[string]any)
-			if !ok {
-				continue
-			}
-			if v, exists := av["url"]; exists {
-				changed = patchURLValue(&v, ghProxy) || changed
-				av["url"] = v
-			}
-			arch[key] = av
-		}
-	}
-
-	return changed
-}
-
 // patchURLValue 就地修改 url 值（string 或 []string），结果写回 *v
 func patchURLValue(v *any, ghProxy string) bool {
 	cur := *v
@@ -131,9 +105,9 @@ func downloadLinkIsGitHub(v any) bool {
 	switch u := v.(type) {
 	case string:
 		return strings.HasPrefix(u, githubURLPrefix)
-	case []any:
-		for _, item := range u {
-			if s, ok := item.(string); ok && strings.HasPrefix(s, githubURLPrefix) {
+	case []string:
+		for _, s := range u {
+			if strings.HasPrefix(s, githubURLPrefix) {
 				return true
 			}
 		}

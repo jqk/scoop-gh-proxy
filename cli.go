@@ -26,7 +26,6 @@ func runSet(dryRun bool) {
 		os.Exit(1)
 	}
 
-	modified := 0
 	for _, r := range rows {
 		if r.Status != IsGitHub {
 			continue
@@ -36,9 +35,8 @@ func runSet(dryRun bool) {
 		if err != nil {
 			return
 		}
-		if isGitHub {
-			modified++
 
+		if isGitHub {
 			if !dryRun {
 				if err := backupManifest(&r); err != nil {
 					warning("备份 %s 失败: %v", r.Name, err)
@@ -48,6 +46,12 @@ func runSet(dryRun bool) {
 	}
 
 	if !dryRun {
+		if cfg.Proxy != "" && cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
+			_, err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Output()
+			if err != nil {
+				warning("执行 scoop config gh_scoop_proxy_backup %s 失败: %w", cfg.Proxy, err)
+			}
+		}
 		if cfg.Proxy != "" {
 			if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil {
 				warning("scoop config rm proxy 失败: %v", err)
@@ -57,16 +61,17 @@ func runSet(dryRun bool) {
 		}
 	}
 
-	printSetSummary(modified, rows)
+	printSetSummary(rows)
 }
 
-func printSetSummary(modified int, results []SetCommandItem) {
-	if modified == 0 {
+func printSetSummary(result []SetCommandItem) {
+	count := len(result)
+	if count == 0 {
 		info("Manifest to Set: 0")
 		return
 	}
-	info("Manifest to Set: %d", modified)
-	printSetTable(results)
+	info("Manifest to Set: %d", count)
+	printSetTable(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -86,8 +91,6 @@ func runRestore(dryRun bool) {
 		os.Exit(1)
 	}
 
-	restored := 0
-
 	if !dryRun {
 		for i := range items {
 			if err := restoreManifest(&items[i]); err != nil {
@@ -95,7 +98,6 @@ func runRestore(dryRun bool) {
 				continue
 			}
 
-			restored++
 			success("已还原 %s", items[i].Name)
 		}
 
@@ -108,15 +110,16 @@ func runRestore(dryRun bool) {
 		}
 	}
 
-	printRestoreSummary(restored, items, true)
+	printRestoreSummary(items, !dryRun)
 }
 
-func printRestoreSummary(restored int, items []RestoreCommandItem, showStatus bool) {
-	if restored == 0 {
+func printRestoreSummary(items []RestoreCommandItem, showStatus bool) {
+	count := len(items)
+	if count == 0 {
 		info("Manifest to restore: 0")
 		return
 	}
-	info("Manifest to restore: %d", restored)
+	info("Manifest to restore: %d", count)
 
 	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
 	for _, it := range items {

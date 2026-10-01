@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// SetCommandStatus set 命令中 Status 列的枚举值
-type SetCommandStatus string
+type SetCommandStatus string // SetCommandStatus set 命令中 Status 列的枚举值
 
 const (
 	NotGitHub     SetCommandStatus = "Not github"             // 下载链接不是 github 的
@@ -104,7 +103,7 @@ func createSetCommandItem(line string, starts []int, rootPath string) SetCommand
 		return strings.TrimSpace(line[a:end])
 	}
 
-	row := SetCommandItem{
+	item := SetCommandItem{
 		Name:      cut(starts[0], starts[1]),
 		Installed: cut(starts[1], starts[2]),
 		Latest:    cut(starts[2], starts[3]),
@@ -112,17 +111,18 @@ func createSetCommandItem(line string, starts []int, rootPath string) SetCommand
 		Info:      cut(starts[4], length),
 		Status:    IsGitHub, // 大多数都是 github 的，先假设是 github，后续再判断
 	}
-	row.Bucket = findBucket(rootPath, row.Name)
-	row.Manifest = findManifest(rootPath, row.Name, row.Bucket)
-	if row.Manifest != "" {
-		row.ManifestBackup = createManifestBackupName(row.Manifest)
+
+	item.Bucket = findBucket(rootPath, item.Name)
+	item.Manifest = findManifest(rootPath, item.Name, item.Bucket)
+	if item.Manifest != "" { // 有 manifest 才确定备份文件名
+		item.ManifestBackup = createManifestBackupName(item.Manifest)
 	}
 
-	if row.Missing != "" || row.Info != "" || row.Latest == "" || row.Installed == "" {
-		row.Status = SetSkipped
-	} else if row.Bucket == "" || row.Manifest == "" {
-		row.Status = NoManifest
+	if item.Missing != "" || item.Info != "" || item.Latest == "" || item.Installed == "" {
+		item.Status = SetSkipped
+	} else if item.Bucket == "" || item.Manifest == "" {
+		item.Status = NoManifest
 	}
 
-	return row
+	return item
 }
