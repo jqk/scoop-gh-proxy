@@ -22,8 +22,8 @@ func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]SetCommandItem, error) {
 		if !fillBucketManifest(cfg, r) {
 			continue // 找不到对应的 manifest 的文件信息，无法继续处理，就结束
 		}
-		if matched, err := tryPatchManifest(r, cfg.GhProxy, dryRun); err != nil || !matched {
-			continue // 操作 manifest 文件失败，或者该 manifest 与所需信息不匹配，结束处理
+		if matched, err := locateManifest(r, cfg.GhProxy); err != nil || !matched {
+			continue // 操作 manifest 文件失败，或者没有待修改的 url，结束处理
 		}
 
 		count++ // 找到需要修改 GitHub 代理的数量

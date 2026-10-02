@@ -9,7 +9,7 @@
 - Go 当前最新版 Go
 - OS Windows only
 - CLI Go 标准库 flag 或专门 CLI 库
-- JSON 标准库 encoding/json，应该是 1.27.1 以来的 v2 版？
+- JSON 标准库。manifest 修改用 `encoding/json/jsontext`（Go 1.27 的 json v2 系列），install.json 用 `encoding/json`
 - 文件 标准库 os / filepath
 - 执行 Scoop os/exec
 - 输出 os.Stdout / os.Stderr
@@ -206,23 +206,18 @@ manifest
 
 注意 `url` 对应的值可以是地址字符串数组。
 
+使用 `encoding/json/jsontext` 逐 token 流式处理，分两个阶段：
+
 ```go
-var manifest map[string]any
+// 只读定位：返回字节区间 + 替换文本的编辑清单，不改动任何内容
+edits, err := locateManifestEdits(data, ghProxy)
 
-json.Unmarshal(data, &manifest)
-
-// 修改 url 之后：
-json.MarshalIndent(manifest, "", "  ")
+// 在其它函数应用：仅替换命中的字符串字面量，其余字节原样保留
+out := applyManifestEdits(data, edits)
 ```
 
-经过处理，JSON 格式可能发生变化，例如：
-
-- 缩进变化
-- 空格变化
-- 转义形式变化
-- 文件末尾换行变化
-
-但只要语意正确，scoop 可以正常使用即可。
+因此处理后的 manifest 与原文件相比，只有命中的 url 行发生变化，
+缩进、key 顺序、转义形式、文件末尾换行等全部保持原样。
 
 ### 6.2 彩色输出
 

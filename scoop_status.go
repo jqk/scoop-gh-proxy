@@ -21,16 +21,17 @@ const (
 
 // SetCommandItem 对应 scoop status -l 中一行 app 记录，还有本程序的属性
 type SetCommandItem struct {
-	Name            string           // scoop status -l 返回信息行：应用名
-	Installed       string           // scoop status -l 返回信息行：已安装版本
-	Latest          string           // scoop status -l 返回信息行：最新版本
-	Missing         string           // scoop status -l 返回信息行：缺失的依赖
-	Info            string           // scoop status -l 返回信息行：其它信息
-	Bucket          string           // 本程序的属性：桶名
-	Manifest        string           // 本程序的属性：manifest 文件名
-	ManifestBackup  string           // 本程序的属性：manifest 备份文件名
-	Status          SetCommandStatus // 本程序的属性：状态值
-	ChangedManifest map[string]any   // 本程序的属性：manifest 更改后的内容
+	Name             string           // scoop status -l 返回信息行：应用名
+	Installed        string           // scoop status -l 返回信息行：已安装版本
+	Latest           string           // scoop status -l 返回信息行：最新版本
+	Missing          string           // scoop status -l 返回信息行：缺失的依赖
+	Info             string           // scoop status -l 返回信息行：其它信息
+	Bucket           string           // 本程序的属性：桶名
+	Manifest         string           // 本程序的属性：manifest 文件名
+	ManifestBackup   string           // 本程序的属性：manifest 备份文件名
+	Status           SetCommandStatus // 本程序的属性：状态值
+	OriginalManifest []byte           // 本程序的属性：manifest 原始内容
+	Edits            []manifestEdit   // 本程序的属性：manifest 中待应用的 url 修改清单
 }
 
 // parseScoopStatus 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。

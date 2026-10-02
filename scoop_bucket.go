@@ -36,7 +36,7 @@ func NewRestoreCommandItem(name, bucket, manifestDir string) RestoreCommandItem 
 	}
 }
 
-// backupManifest 创建 manifest 的备份
+// backupManifest 备份原始 manifest，再把应用了代理前缀的新内容写入 manifest 文件
 func backupManifest(item *SetCommandItem) error {
 	if item.Status != IsGitHub {
 		return nil // 不是 github 的，跳过
@@ -51,12 +51,8 @@ func backupManifest(item *SetCommandItem) error {
 		return err
 	}
 
-	out, err := json.MarshalIndent(item.ChangedManifest, "", "  ")
-	if err != nil {
-		item.Status = ManifestError
-		return err
-	}
-	out = append(out, '\n') // 此时，item.Status 仍为 IsGitHub
+	// 此处应用 locateManifest 定位出的修改：只替换命中的 url 字面量，其余字节原样保留
+	out := applyManifestEdits(item.OriginalManifest, item.Edits)
 
 	return os.WriteFile(item.Manifest, out, 0644) // 创建添加 github 代理后的文件
 }

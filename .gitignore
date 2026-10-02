@@ -8,3 +8,6 @@
 !.vscode/tasks.json
 
 *.exe
+
+# 3. Z-Code
+.zcode/
