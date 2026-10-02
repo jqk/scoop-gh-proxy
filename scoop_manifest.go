@@ -8,7 +8,7 @@ import (
 
 const githubURLPrefix = "https://github.com"
 
-// patchMatchedManifest 先确定是否需要修改下载链接，若是且 dryRun 为 false 则修改
+// patchMatchedManifest 在 mainfest 中匹配要修改下载链接，若匹配且 dryRun 为 false 则修改
 func patchMatchedManifest(item *SetCommandItem, ghProxy string, dryRun bool) (matched bool, err error) {
 	data, err := os.ReadFile(item.Manifest) // 读取 manifest 文件
 	if err != nil {
@@ -16,45 +16,49 @@ func patchMatchedManifest(item *SetCommandItem, ghProxy string, dryRun bool) (ma
 		return false, err
 	}
 
-	var m map[string]any
-	if err = json.Unmarshal(data, &m); err != nil { // 解析 json
+	var manifestContent map[string]any
+	if err = json.Unmarshal(data, &manifestContent); err != nil { // 解析 json
 		item.Status = ManifestError
 		return false, err
 	}
 
-	if matched = patchDownloadLinks(m, ghProxy, dryRun); !matched {
-		item.Status = NotGitHub // 没匹配上就根本不会修改
+	if matched = patchMatchedDownloadLinks(manifestContent, ghProxy, dryRun); !matched {
+		item.Status = NotGitHub // 没匹配上不会修改，没有“新的内容”需要返回
 	} else {
 		item.Status = IsGitHub
-		if !dryRun { // 找到了，又不是 dryRun，必须就修改了，所以保存修改后的结果，这样可以传出去
-			item.ChangedManifest = m
+		if !dryRun { // 找到了，又不是 dryRun，必须修改，所以保存修改后的结果，这样可以传出去
+			item.ChangedManifest = manifestContent
 		}
 	}
 
 	return matched, nil
 }
 
-func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (matched bool) {
+// patchMatchedDownloadLinks 匹配要修改下载链接，若匹配且 dryRun 为 false 则修改
+func patchMatchedDownloadLinks(content map[string]any, ghProxy string, dryRun bool) (matched bool) {
 	matched = false
 
-	if url, ok := m["url"]; ok && downloadLinkIsGitHub(url) {
+	// url 元素出现在一级节点。注意，url 元素的值可能是 string，也可能是 []string
+	if url, ok := content["url"]; ok && downloadLinkMatched(url) {
 		matched = true
 		if !dryRun && patchURLValue(&url, ghProxy) {
-			m["url"] = url
+			content["url"] = url
 		}
 	}
 
-	if arch, ok := m["architecture"].(map[string]any); ok {
-		for _, archVal := range arch {
-			av, ok := archVal.(map[string]any)
+	// architecture 是一级节点，二级节点是 x64，arm64 之类的，三级节点才是 url 元素
+	if arch, ok := content["architecture"].(map[string]any); ok {
+		for _, archVal := range arch { // 二级节点有多个，所以要遍历一下
+			secondLevelElement, ok := archVal.(map[string]any)
 			if !ok {
 				continue
 			}
 
-			if url, ok := av["url"]; ok && downloadLinkIsGitHub(url) {
+			// 二级节点下可以有多个三级节点，但只能有一个 url
+			if url, ok := secondLevelElement["url"]; ok && downloadLinkMatched(url) {
 				matched = true
 				if !dryRun && patchURLValue(&url, ghProxy) {
-					av["url"] = url
+					secondLevelElement["url"] = url
 				}
 			}
 		}
@@ -105,7 +109,7 @@ func patchSingleURL(s *string, ghProxy string) bool {
 	return true
 }
 
-func downloadLinkIsGitHub(v any) bool {
+func downloadLinkMatched(v any) bool {
 	switch u := v.(type) {
 	case string:
 		return strings.HasPrefix(u, githubURLPrefix)

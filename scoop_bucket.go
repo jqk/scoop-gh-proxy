@@ -148,11 +148,12 @@ func findBucket(rootPath, appName string) string {
 	installFile := "" // 安装信息文件名，初始时以空字符串表示安装信息文件不存在
 
 	// 先确定安装信息文件是否存在
-	for _, installFile = range []string{ // 有以下可能的安装信息文件名
+	for _, s := range []string{ // 有以下可能的安装信息文件名
 		filepath.Join(installPath, "install.json"),
 		filepath.Join(installPath, "scoop-install.json"),
 	} {
-		if fileExists(installFile) { // 文件存在
+		if fileExists(s) { // 文件存在
+			installFile = s
 			break
 		}
 	}
