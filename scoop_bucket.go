@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,7 +176,7 @@ func findBucket(rootPath, appName string) string {
 	return installInfo.Bucket
 }
 
-// findManifest 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找
+// findManifest 在 buckets 中查找 app 的 manifest 文件。返回空字符串表示没找到
 func findManifest(rootPath, appName, bucketName string) string {
 	if bucketName == "" { // 确保桶名称有效
 		bucketName = findBucket(rootPath, appName)
@@ -185,17 +186,28 @@ func findManifest(rootPath, appName, bucketName string) string {
 	}
 
 	scoopBucketsRoot := filepath.Join(rootPath, "buckets")
+	manifestFileName := appName + ".json" // 不包含路径的 manifestPath 文件名
+	manifestPath := filepath.Join(scoopBucketsRoot, bucketName, manifestFileName)
 
-	// 按给出数组项的顺序，是先查找 buckets\<bucket>\bucket\<app>.json，再查找 buckets\<bucket>\<app>.json
-	// 因为大多数桶都是前者，少数是后者
-	for _, candidate := range []string{
-		filepath.Join(scoopBucketsRoot, bucketName, "bucket", appName+".json"),
-		filepath.Join(scoopBucketsRoot, bucketName, appName+".json"),
-	} {
-		if fileExists(candidate) { // 文件存在
-			return candidate
-		}
+	if fileExists(manifestPath) { // 少数桶直接将 manifest 放在桶目录下
+		return manifestPath
 	}
 
-	return "" // 按逻辑必然有值，所以返回空字符串表示有错误
+	manifestPath = "" // 假设没找到，设置为空
+	bucketDir := filepath.Join(scoopBucketsRoot, bucketName, "bucket")
+
+	// 多数桶放在 bucket 目录下。但有部分桶还采用多级目录结构，所以需要 WalkDir()
+	filepath.WalkDir(bucketDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() { // 不处理目录，只比较各个目录中的文件
+			return nil // 吞掉错误，继续查找。因为反正有错误的结果也是找不到文件
+		}
+
+		if d.Name() == manifestFileName {
+			manifestPath = path
+			return fs.SkipAll // 找到了，结束查找
+		}
+		return nil
+	})
+
+	return manifestPath // 按逻辑必然有值，所以返回空字符串表示有错误
 }
