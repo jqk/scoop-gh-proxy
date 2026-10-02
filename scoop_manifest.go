@@ -8,7 +8,8 @@ import (
 
 const githubURLPrefix = "https://github.com"
 
-func patchManifest(item *SetCommandItem, ghProxy string, dryRun bool) (isGitHub bool, err error) {
+// patchMatchedManifest 先确定是否需要修改下载链接，若是且 dryRun 为 false 则修改
+func patchMatchedManifest(item *SetCommandItem, ghProxy string, dryRun bool) (matched bool, err error) {
 	data, err := os.ReadFile(item.Manifest) // 读取 manifest 文件
 	if err != nil {
 		item.Status = ManifestError
@@ -21,21 +22,24 @@ func patchManifest(item *SetCommandItem, ghProxy string, dryRun bool) (isGitHub 
 		return false, err
 	}
 
-	isGitHub, _ = patchDownloadLinks(m, ghProxy, dryRun)
-	item.ChangedManifest = m
+	if matched = patchDownloadLinks(m, ghProxy, dryRun); !matched {
+		item.Status = NotGitHub // 没匹配上就根本不会修改
+	} else if !dryRun {
+		item.Status = IsGitHub
+		// 找到了，又不是 dryRun，必须就修改了，所以保存修改后的结果，这样可以传出去
+		item.ChangedManifest = m
+	}
 
-	return isGitHub, nil
+	return matched, nil
 }
 
-func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub bool, changed bool) {
-	isGitHub = false
-	changed = false
+func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (found bool) {
+	found = false
 
 	if url, ok := m["url"]; ok && downloadLinkIsGitHub(url) {
-		isGitHub = true
+		found = true
 		if !dryRun && patchURLValue(&url, ghProxy) {
 			m["url"] = url
-			changed = true
 		}
 	}
 
@@ -47,16 +51,15 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (isGitHub
 			}
 
 			if url, ok := av["url"]; ok && downloadLinkIsGitHub(url) {
-				isGitHub = true
+				found = true
 				if !dryRun && patchURLValue(&url, ghProxy) {
 					av["url"] = url
-					changed = true
 				}
 			}
 		}
 	}
 
-	return isGitHub, changed
+	return found
 }
 
 // patchURLValue 就地修改 url 值（string 或 []string），结果写回 *v

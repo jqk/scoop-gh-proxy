@@ -20,46 +20,48 @@ func runSet(dryRun bool) {
 		os.Exit(1)
 	}
 
-	rows, err := parseScoopStatus(cfg.RootPath)
-	if err != nil {
-		error_("执行 scoop status -l 失败: %v", err)
-		os.Exit(1)
-	}
+	rows, err := RunSetCommand(&cfg, dryRun)
 
-	for _, r := range rows {
-		if r.Status != IsGitHub {
-			continue
-		}
+	// rows, err := parseScoopStatus(cfg.RootPath)
+	// if err != nil {
+	// 	error_("执行 scoop status -l 失败: %v", err)
+	// 	os.Exit(1)
+	// }
 
-		isGitHub, err := patchManifest(&r, cfg.GhProxy, dryRun)
-		if err != nil {
-			return
-		}
+	// for _, r := range rows {
+	// 	if r.Status != IsGitHub {
+	// 		continue
+	// 	}
 
-		if isGitHub {
-			if !dryRun {
-				if err := backupManifest(&r); err != nil {
-					warning("备份 %s 失败: %v", r.Name, err)
-				}
-			}
-		}
-	}
+	// 	isGitHub, err := patchManifest(&r, cfg.GhProxy, dryRun)
+	// 	if err != nil {
+	// 		return
+	// 	}
 
-	if !dryRun {
-		if cfg.Proxy != "" && cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
-			_, err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Output()
-			if err != nil {
-				warning("执行 scoop config gh_scoop_proxy_backup %s 失败: %w", cfg.Proxy, err)
-			}
-		}
-		if cfg.Proxy != "" {
-			if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil {
-				warning("scoop config rm proxy 失败: %v", err)
-			} else {
-				success("已执行 scoop config rm proxy")
-			}
-		}
-	}
+	// 	if isGitHub {
+	// 		if !dryRun {
+	// 			if err := backupManifest(&r); err != nil {
+	// 				warning("备份 %s 失败: %v", r.Name, err)
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	// if !dryRun {
+	// 	if cfg.Proxy != "" && cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
+	// 		_, err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Output()
+	// 		if err != nil {
+	// 			warning("执行 scoop config gh_scoop_proxy_backup %s 失败: %w", cfg.Proxy, err)
+	// 		}
+	// 	}
+	// 	if cfg.Proxy != "" {
+	// 		if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil {
+	// 			warning("scoop config rm proxy 失败: %v", err)
+	// 		} else {
+	// 			success("已执行 scoop config rm proxy")
+	// 		}
+	// 	}
+	// }
 
 	printSetSummary(rows)
 }

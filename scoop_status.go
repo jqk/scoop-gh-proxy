@@ -9,12 +9,14 @@ import (
 type SetCommandStatus string // SetCommandStatus set 命令中 Status 列的枚举值
 
 const (
-	NotGitHub     SetCommandStatus = "Not github"             // 下载链接不是 github 的
-	SetSkipped    SetCommandStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过
-	IsGitHub      SetCommandStatus = "Is github"              // 下载链接是 github 的
-	NoManifest    SetCommandStatus = "Manifest not found"     // manifest 文件不存在
-	ManifestError SetCommandStatus = "Manifest error"         // manifest 文件存在但读取失败
-	BackupExists  SetCommandStatus = "Manifest backup exists" // manifest 备份已存在
+	Unknown       SetCommandStatus = "Unknown"                // 刚刚初始化，应继续执行
+	IsGitHub      SetCommandStatus = "Is github"              // 下载链接是 github 的，到当前执行阶段仍是成功的，可继续执行
+	NotGitHub     SetCommandStatus = "Not github"             // 下载链接不是 github 的，终止执行
+	SetSkipped    SetCommandStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过并终止执行
+	NoManifest    SetCommandStatus = "Manifest not found"     // manifest 文件不存在，终止执行
+	ManifestError SetCommandStatus = "Manifest error"         // manifest 文件存在但读取失败，终止执行
+	BackupExists  SetCommandStatus = "Manifest backup exists" // manifest 备份已存在，终止执行
+	BackupFailed  SetCommandStatus = "Manifest backup failed" // manifest 备份失败，终止执行
 )
 
 // SetCommandItem 对应 scoop status -l 中一行 app 记录，还有本程序的属性
@@ -109,19 +111,11 @@ func createSetCommandItem(line string, starts []int, rootPath string) SetCommand
 		Latest:    cut(starts[2], starts[3]),
 		Missing:   cut(starts[3], starts[4]),
 		Info:      cut(starts[4], length),
-		Status:    IsGitHub, // 大多数都是 github 的，先假设是 github，后续再判断
-	}
-
-	item.Bucket = findBucket(rootPath, item.Name)
-	item.Manifest = findManifest(rootPath, item.Name, item.Bucket)
-	if item.Manifest != "" { // 有 manifest 才确定备份文件名
-		item.ManifestBackup = createManifestBackupName(item.Manifest)
+		Status:    Unknown, // 初始化，待后续处理时更新
 	}
 
 	if item.Missing != "" || item.Info != "" || item.Latest == "" || item.Installed == "" {
-		item.Status = SetSkipped
-	} else if item.Bucket == "" || item.Manifest == "" {
-		item.Status = NoManifest
+		item.Status = SetSkipped // 信息不全，或过多，如被值过 scoop hold，或者已经 deprecated 等
 	}
 
 	return item
