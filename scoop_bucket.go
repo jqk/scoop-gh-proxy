@@ -143,20 +143,36 @@ func createManifestBackupName(name string) string {
 
 // findBucket 读取 apps\<name>\current\install.json 获取 bucket 名
 func findBucket(rootPath, appName string) string {
-	installPath := filepath.Join(rootPath, "apps", appName, "current", "install.json")
-	data, err := os.ReadFile(installPath)
+	installPath := filepath.Join(rootPath, "apps", appName, "current")
+	installFile := "" // 安装信息文件名，初始时以空字符串表示安装信息文件不存在
+
+	// 先确定安装信息文件是否存在
+	for _, installFile = range []string{ // 有以下可能的安装信息文件名
+		filepath.Join(installPath, "install.json"),
+		filepath.Join(installPath, "scoop-install.json"),
+	} {
+		if fileExists(installFile) { // 文件存在
+			break
+		}
+	}
+
+	if installFile == "" { // 没找到安装信息文件
+		return ""
+	}
+
+	data, err := os.ReadFile(installFile)
 	if err != nil {
 		return "" // 按逻辑必然有值，所以返回空字符串表示有错误
 	}
 
-	var install struct {
-		Bucket string `json:"bucket"` // install.json 中桶名称节点
+	var installInfo struct {
+		Bucket string `json:"bucket"` // 安装信息文件中桶名称节点
 	}
-	if err := json.Unmarshal(data, &install); err != nil {
+	if err := json.Unmarshal(data, &installInfo); err != nil {
 		return "" // 按逻辑必然有值，所以返回空字符串表示有错误
 	}
 
-	return install.Bucket
+	return installInfo.Bucket
 }
 
 // findManifest 在 buckets\<bucket>\bucket\<app>.json 或 buckets\<bucket>\<app>.json 中查找

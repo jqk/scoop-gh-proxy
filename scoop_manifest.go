@@ -24,20 +24,21 @@ func patchMatchedManifest(item *SetCommandItem, ghProxy string, dryRun bool) (ma
 
 	if matched = patchDownloadLinks(m, ghProxy, dryRun); !matched {
 		item.Status = NotGitHub // 没匹配上就根本不会修改
-	} else if !dryRun {
+	} else {
 		item.Status = IsGitHub
-		// 找到了，又不是 dryRun，必须就修改了，所以保存修改后的结果，这样可以传出去
-		item.ChangedManifest = m
+		if !dryRun { // 找到了，又不是 dryRun，必须就修改了，所以保存修改后的结果，这样可以传出去
+			item.ChangedManifest = m
+		}
 	}
 
 	return matched, nil
 }
 
-func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (found bool) {
-	found = false
+func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (matched bool) {
+	matched = false
 
 	if url, ok := m["url"]; ok && downloadLinkIsGitHub(url) {
-		found = true
+		matched = true
 		if !dryRun && patchURLValue(&url, ghProxy) {
 			m["url"] = url
 		}
@@ -51,7 +52,7 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (found bo
 			}
 
 			if url, ok := av["url"]; ok && downloadLinkIsGitHub(url) {
-				found = true
+				matched = true
 				if !dryRun && patchURLValue(&url, ghProxy) {
 					av["url"] = url
 				}
@@ -59,7 +60,7 @@ func patchDownloadLinks(m map[string]any, ghProxy string, dryRun bool) (found bo
 		}
 	}
 
-	return found
+	return matched
 }
 
 // patchURLValue 就地修改 url 值（string 或 []string），结果写回 *v
