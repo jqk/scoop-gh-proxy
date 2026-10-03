@@ -88,3 +88,27 @@ func validateConfig(cfg *ScoopConfig) error {
 
 	return nil
 }
+
+func setScoopProxy(cfg *ScoopConfig) error {
+	if cfg.Proxy != "" {
+		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
+			if err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Run(); err != nil {
+				return err
+			}
+		}
+		if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil { //清空
+			return err
+		}
+	}
+
+	return nil
+}
+
+func RestoreScoopProxy(cfg *ScoopConfig) error {
+	if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
+		if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -47,6 +47,7 @@ go build -o scoop-gh-proxy.exe .
 - `Unknown` — 初始，待处理
 - `Is github` — 存在待修改的 GitHub URL
 - `Not github` — 无待修改的 URL
+- `Proxy set` — url 已带 gh_proxy 前缀（重复执行 set 时的正常状态，无需修改）
 - `Skipped` — status 行信息不全（Info/Missing 列非空、版本缺失等）
 - `Manifest not found` — bucket 或 manifest 文件找不到
 - `Manifest error` — manifest 读取或解析失败

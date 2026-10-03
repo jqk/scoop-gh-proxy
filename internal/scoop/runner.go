@@ -2,10 +2,9 @@ package scoop
 
 import (
 	"fmt"
-	"os/exec"
 )
 
-func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
+func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
 	apps, err := getOutdatedApps()
 	if err != nil {
 		return apps, fmt.Errorf("执行 scoop status -l 失败: %v", err)
@@ -23,7 +22,7 @@ func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
 			continue // 找不到对应的 manifest 的文件信息，无法继续处理，就结束
 		}
 		if matched, err := locateManifest(app, cfg.GhProxy); err != nil || !matched {
-			continue // 操作 manifest 文件失败，或者没有待修改的 url，结束处理
+			continue // 操作 manifest 文件失败，或者没有待修改的 url（含已设置代理），结束处理
 		}
 
 		count++ // 找到需要修改 GitHub 代理的数量
@@ -37,37 +36,10 @@ func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
 
 	err = nil
 	if !dryRun && count > 0 {
-		err = backupAndSetProxy(cfg)
+		err = setScoopProxy(cfg)
 	}
 
 	return apps, err
 }
 
-func fillBucketManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
-	if app.Bucket = findBucket(cfg.RootPath, app.Name); app.Bucket == "" {
-		app.Status = NoManifest
-		return false
-	}
-	if app.Manifest = findManifest(cfg.RootPath, app.Name, app.Bucket); app.Manifest == "" {
-		app.Status = NoManifest
-		return false
-	}
 
-	app.ManifestBackup = createManifestBackupName(app.Manifest) // 有 manifest 才确定备份文件名
-	return true
-}
-
-func backupAndSetProxy(cfg *ScoopConfig) error {
-	if cfg.Proxy != "" {
-		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
-			if err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Run(); err != nil {
-				return err
-			}
-		}
-		if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil { //清空
-			return err
-		}
-	}
-
-	return nil
-}

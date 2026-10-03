@@ -40,12 +40,15 @@ const fullManifest = `{
 const crlfManifest = "{\r\n  \"url\": \"https://github.com/a/b/c.zip\",\r\n  \"name\": \"c\"\r\n}\r\n"
 
 func TestLocateAndApplyFullManifest(t *testing.T) {
-	edits, err := locateManifestEdits([]byte(fullManifest), testGhProxy)
+	edits, proxied, err := locateManifestEdits([]byte(fullManifest), testGhProxy)
 	if err != nil {
 		t.Fatalf("locateManifestEdits 报错: %v", err)
 	}
 	if len(edits) != 3 { // 顶层 1 + 64bit 1 + 32bit 数组内 1
 		t.Fatalf("期望 3 处编辑，实际 %d 处: %+v", len(edits), edits)
+	}
+	if proxied {
+		t.Fatal("原始 manifest 不应存在已设置代理的 url")
 	}
 
 	want := fullManifest
@@ -61,14 +64,15 @@ func TestLocateAndApplyFullManifest(t *testing.T) {
 		t.Fatalf("应用编辑后内容不符\n got: %q\nwant: %q", got, want)
 	}
 
-	// 幂等：对输出再次定位应无命中（已带代理前缀）
-	if edits2, err := locateManifestEdits([]byte(want), testGhProxy); err != nil || len(edits2) != 0 {
-		t.Fatalf("再次定位应无编辑，实际 edits=%v err=%v", edits2, err)
+	// 幂等：对输出再次定位应无编辑，且判定为已设置代理
+	edits2, proxied2, err := locateManifestEdits([]byte(want), testGhProxy)
+	if err != nil || len(edits2) != 0 || !proxied2 {
+		t.Fatalf("再次定位应无编辑且已设置代理，实际 edits=%v proxied=%v err=%v", edits2, proxied2, err)
 	}
 }
 
 func TestLocateAndApplyCRLF(t *testing.T) {
-	edits, err := locateManifestEdits([]byte(crlfManifest), testGhProxy)
+	edits, _, err := locateManifestEdits([]byte(crlfManifest), testGhProxy)
 	if err != nil {
 		t.Fatalf("locateManifestEdits 报错: %v", err)
 	}
@@ -85,36 +89,41 @@ func TestLocateAndApplyCRLF(t *testing.T) {
 
 func TestLocateManifestEdits(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantEdits int
-		wantErr   bool
+		name        string
+		input       string
+		wantEdits   int
+		wantProxied bool
+		wantErr     bool
 	}{
-		{"非 github url", `{"url": "https://example.com/x"}`, 0, false},
-		{"已带代理前缀", `{"url": "` + testGhProxy + `https://github.com/a/b"}`, 0, false},
-		{"数组内均非 github", `{"url": ["https://example.com/1", "https://example.com/2"]}`, 0, false},
-		{"数组内部分命中", `{"url": ["https://github.com/a/1", "https://example.com/2"]}`, 1, false},
-		{"顶层与架构块并存都命中", `{"url": "https://github.com/a/b", "architecture": {"64bit": {"url": "https://github.com/a/c"}}}`, 2, false},
-		{"架构块数组 url", `{"architecture": {"arm64": {"url": ["https://github.com/a/d"]}}}`, 1, false},
-		{"url 值为数字", `{"url": 123}`, 0, false},
-		{"url 值为对象", `{"url": {"x": "https://github.com/a/b"}}`, 0, false},
-		{"url 数组元素为对象", `{"url": [{"u": "https://github.com/a/b"}]}`, 0, false},
-		{"architecture 值为数组", `{"architecture": ["x"], "url": "https://github.com/a/b"}`, 1, false},
-		{"非顶层的 architecture 不命中", `{"extra": {"architecture": {"64bit": {"url": "https://github.com/a/b"}}}}`, 0, false},
-		{"checkver.url 不命中", `{"checkver": {"url": "https://github.com/a/releases"}}`, 0, false},
-		{"autoupdate.url 不命中", `{"autoupdate": {"url": "https://github.com/a/b"}}`, 0, false},
-		{"无 url 字段", `{"name": "x", "bin": "x.exe"}`, 0, false},
-		{"空文件", ``, 0, true},
-		{"顶层是数组", `[1, 2]`, 0, true},
-		{"顶层是字符串", `"hello"`, 0, true},
-		{"JSON 截断", `{"url": "https://github.com/a/b"`, 0, true},
-		{"顶层值后有多余内容", `{"url": "https://github.com/a/b"} extra`, 0, true},
-		{"语法错误", `{"url": "a" "b"}`, 0, true},
+		{"非 github url", `{"url": "https://example.com/x"}`, 0, false, false},
+		{"已带代理前缀", `{"url": "` + testGhProxy + `https://github.com/a/b"}`, 0, true, false},
+		{"数组内均非 github", `{"url": ["https://example.com/1", "https://example.com/2"]}`, 0, false, false},
+		{"数组内部分命中", `{"url": ["https://github.com/a/1", "https://example.com/2"]}`, 1, false, false},
+		{"数组内全部已代理", `{"url": ["` + testGhProxy + `https://github.com/a/1", "` + testGhProxy + `https://github.com/a/2"]}`, 0, true, false},
+		{"顶层与架构块并存都命中", `{"url": "https://github.com/a/b", "architecture": {"64bit": {"url": "https://github.com/a/c"}}}`, 2, false, false},
+		{"顶层已代理、架构块待修改", `{"url": "` + testGhProxy + `https://github.com/a/b", "architecture": {"64bit": {"url": "https://github.com/a/c"}}}`, 1, true, false},
+		{"架构块数组 url", `{"architecture": {"arm64": {"url": ["https://github.com/a/d"]}}}`, 1, false, false},
+		{"架构块已代理", `{"architecture": {"64bit": {"url": "` + testGhProxy + `https://github.com/a/b"}}}`, 0, true, false},
+		{"非允许位置的已代理 url 不算", `{"checkver": {"url": "` + testGhProxy + `https://github.com/a/x"}}`, 0, false, false},
+		{"url 值为数字", `{"url": 123}`, 0, false, false},
+		{"url 值为对象", `{"url": {"x": "https://github.com/a/b"}}`, 0, false, false},
+		{"url 数组元素为对象", `{"url": [{"u": "https://github.com/a/b"}]}`, 0, false, false},
+		{"architecture 值为数组", `{"architecture": ["x"], "url": "https://github.com/a/b"}`, 1, false, false},
+		{"非顶层的 architecture 不命中", `{"extra": {"architecture": {"64bit": {"url": "https://github.com/a/b"}}}}`, 0, false, false},
+		{"checkver.url 不命中", `{"checkver": {"url": "https://github.com/a/releases"}}`, 0, false, false},
+		{"autoupdate.url 不命中", `{"autoupdate": {"url": "https://github.com/a/b"}}`, 0, false, false},
+		{"无 url 字段", `{"name": "x", "bin": "x.exe"}`, 0, false, false},
+		{"空文件", ``, 0, false, true},
+		{"顶层是数组", `[1, 2]`, 0, false, true},
+		{"顶层是字符串", `"hello"`, 0, false, true},
+		{"JSON 截断", `{"url": "https://github.com/a/b"`, 0, false, true},
+		{"顶层值后有多余内容", `{"url": "https://github.com/a/b"} extra`, 0, false, true},
+		{"语法错误", `{"url": "a" "b"}`, 0, false, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			edits, err := locateManifestEdits([]byte(tt.input), testGhProxy)
+			edits, proxied, err := locateManifestEdits([]byte(tt.input), testGhProxy)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("期望报错，实际无错，edits=%v", edits)
@@ -126,6 +135,9 @@ func TestLocateManifestEdits(t *testing.T) {
 			}
 			if len(edits) != tt.wantEdits {
 				t.Fatalf("期望 %d 处编辑，实际 %d 处: %+v", tt.wantEdits, len(edits), edits)
+			}
+			if proxied != tt.wantProxied {
+				t.Fatalf("期望 proxied=%v，实际 %v", tt.wantProxied, proxied)
 			}
 			// 编辑区间必须指向字符串字面量，且应用后仍是合法输入的超集替换
 			data := []byte(tt.input)
@@ -151,14 +163,41 @@ func TestLocateManifestItemFlow(t *testing.T) {
 		t.Fatalf("首次定位不符: matched=%v err=%v status=%v edits=%d", matched, err, item.Status, len(item.Edits))
 	}
 
-	// 应用编辑并写回后，再次定位应判为 Not github（幂等）
+	// 应用编辑并写回后，再次定位应判为已设置代理（重复执行 set 的正常状态）
 	out := applyManifestEdits(item.OriginalManifest, item.Edits)
 	if err := os.WriteFile(manifest, out, 0644); err != nil {
 		t.Fatal(err)
 	}
 	item2 := OutdatedApp{Name: "app", Manifest: manifest}
 	matched2, err := locateManifest(&item2, testGhProxy)
-	if err != nil || matched2 || item2.Status != NotGitHub {
-		t.Fatalf("再次定位应为 Not github: matched=%v err=%v status=%v", matched2, err, item2.Status)
+	if err != nil || matched2 || item2.Status != ProxySet {
+		t.Fatalf("再次定位应为 Proxy set: matched=%v err=%v status=%v", matched2, err, item2.Status)
+	}
+}
+
+func TestLocateManifestStatus(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name    string
+		content string
+		want    OutdatedAppStatus
+		matched bool
+	}{
+		{"待修改", `{"url": "https://github.com/a/b"}`, IsGitHub, true},
+		{"已设置代理", `{"url": "` + testGhProxy + `https://github.com/a/b"}`, ProxySet, false},
+		{"非 github", `{"url": "https://example.com/x"}`, NotGitHub, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := filepath.Join(dir, tt.name+".json")
+			if err := os.WriteFile(manifest, []byte(tt.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			item := OutdatedApp{Name: tt.name, Manifest: manifest}
+			matched, err := locateManifest(&item, testGhProxy)
+			if err != nil || item.Status != tt.want || matched != tt.matched {
+				t.Fatalf("status=%v matched=%v err=%v，期望 %v/%v", item.Status, matched, err, tt.want, tt.matched)
+			}
+		})
 	}
 }

@@ -1,4 +1,4 @@
-module github.com/zhangsan/scoop-gh-proxy
+module github.com/jqk/scoop-gh-proxy
 
 go 1.27.1
 

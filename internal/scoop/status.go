@@ -17,6 +17,7 @@ const (
 	ManifestError OutdatedAppStatus = "Manifest error"         // manifest 文件存在但读取失败，终止执行
 	BackupExists  OutdatedAppStatus = "Manifest backup exists" // manifest 备份已存在，终止执行
 	BackupFailed  OutdatedAppStatus = "Manifest backup failed" // manifest 备份失败，终止执行
+	ProxySet      OutdatedAppStatus = "Proxy set"              // url 已带 gh_proxy 前缀，无需重复设置
 )
 
 // OutdatedApp 对应 scoop status -l 中一行 app 记录，还附加有本程序使用的属性
@@ -125,4 +126,18 @@ func createOutdatedApp(line string, starts []int) OutdatedApp {
 	}
 
 	return app
+}
+
+func fillBucketManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
+	if app.Bucket = findBucket(cfg.RootPath, app.Name); app.Bucket == "" {
+		app.Status = NoManifest
+		return false
+	}
+	if app.Manifest = findManifest(cfg.RootPath, app.Name, app.Bucket); app.Manifest == "" {
+		app.Status = NoManifest
+		return false
+	}
+
+	app.ManifestBackup = createManifestBackupName(app.Manifest) // 有 manifest 才确定备份文件名
+	return true
 }

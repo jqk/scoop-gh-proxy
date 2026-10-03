@@ -3,12 +3,11 @@ package cli
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/fatih/color"
 
-	"github.com/zhangsan/scoop-gh-proxy/internal/scoop"
+	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,9 +21,8 @@ func RunSet(dryRun bool) {
 		os.Exit(1)
 	}
 
-	rows, err := scoop.RunSetCommand(&cfg, dryRun)
-
-	printSetSummary(rows)
+	apps, err := scoop.SetProxyForOutdatedApps(&cfg, dryRun)
+	printSetSummary(apps)
 }
 
 func printSetSummary(result []scoop.OutdatedApp) {
@@ -64,12 +62,8 @@ func RunRestore(dryRun bool) {
 			success("已还原 %s", items[i].Name)
 		}
 
-		if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
-			if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
-				warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
-			} else {
-				success("已执行 scoop config proxy %s", cfg.GhScoopProxyBackup)
-			}
+		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
+			warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
 		}
 	}
 
@@ -182,10 +176,10 @@ func printSetTable(results []scoop.OutdatedApp) {
 }
 
 func pickColor(status string) *color.Color {
-	switch {
-	case status == "Skipped":
+	switch status {
+	case "Skipped":
 		return color.New(color.FgYellow)
-	case status == "Not github":
+	case "Not github", "Proxy set":
 		return color.New(color.FgWhite)
 	default:
 		return color.New(color.FgGreen)

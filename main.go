@@ -6,7 +6,7 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/zhangsan/scoop-gh-proxy/internal/cli"
+	"github.com/jqk/scoop-gh-proxy/internal/cli"
 )
 
 const version = "1.0.0"
