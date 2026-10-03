@@ -46,27 +46,10 @@ func RunRestore(dryRun bool) {
 		os.Exit(1)
 	}
 
-	items, err := scoop.FindRestoreCommandItems(cfg.RootPath)
+	items, err := scoop.RestoreOutdatedAppManifests(&cfg, dryRun)
 	if err != nil {
 		error_("%s", err)
-		os.Exit(1)
 	}
-
-	if !dryRun {
-		for i := range items {
-			if err := scoop.RestoreManifest(&items[i]); err != nil {
-				error_("还原 %s 失败: %v", items[i].Name, err)
-				continue
-			}
-
-			success("已还原 %s", items[i].Name)
-		}
-
-		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
-			warning("scoop config proxy %s 失败: %v", cfg.GhScoopProxyBackup, err)
-		}
-	}
-
 	printRestoreSummary(items, !dryRun)
 }
 

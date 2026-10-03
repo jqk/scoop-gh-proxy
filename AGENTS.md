@@ -18,9 +18,9 @@ go build -o scoop-gh-proxy.exe .
 - `main.go` — 入口，参数分发（--set / --restore / --status / --help / --version）
 - `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
-- `internal/scoop/config.go` — 解析并校验 scoop config
-- `internal/scoop/status.go` — 解析 scoop status -l；OutdatedApp 与状态枚举定义
-- `internal/scoop/runner.go` — set 命令主流程
+- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / RestoreScoopProxy）
+- `internal/scoop/status.go` — 解析 scoop status -l；OutdatedApp 与状态枚举定义；fillBucketManifest 定位 bucket 与 manifest
+- `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找
@@ -59,7 +59,7 @@ go build -o scoop-gh-proxy.exe .
 - `--restore` — 还原 backup，输出 "Manifest to restore: N" + 明细表（Name + Bucket）
 - `--status` — dry-run，先输出 restore 明细，再输出 set 明细，不修改任何文件
 - N 为 0 时不输出明细表
-- dryRun 标志只存在于命令层（RunSetCommand / RunRestore），manifest 层只做只读定位
+- dryRun 标志只存在于命令流程层（SetProxyForOutdatedApps / RestoreOutdatedAppManifests），manifest 层只做只读定位
 
 ## 共享逻辑
 - `locateManifest` — 只读定位待修改 url 并流转 Status（set 与 status 共用）
