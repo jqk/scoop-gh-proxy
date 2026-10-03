@@ -19,7 +19,8 @@ go build -o scoop-gh-proxy.exe .
 - `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / RestoreScoopProxy）
-- `internal/scoop/status.go` — 解析 scoop status -l；OutdatedApp 与状态枚举定义；fillBucketManifest 定位 bucket 与 manifest
+- `internal/scoop/status.go` — 解析 scoop status -l；fillBucketManifest 定位 bucket 与 manifest
+- `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测

@@ -78,7 +78,7 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
 		fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
 		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
-		fmt.Println()
+
 		for _, it := range items {
 			c := pickColor(string(it.Status))
 			c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
@@ -87,7 +87,7 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
 		fmt.Printf(rowFmt, "App Name", "Bucket Name")
 		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
-		fmt.Println()
+
 		for _, it := range items {
 			fmt.Printf(rowFmt, it.Name, it.Bucket)
 		}
@@ -100,12 +100,9 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 
 func RunStatus() {
 	RunRestore(true)
+	fmt.Println() // 分隔 restore 明细与 set 明细
 	RunSet(true)
 }
-
-// ---------------------------------------------------------------------------
-// 共享：manifest 定位
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // 共享：set 结果表
@@ -142,7 +139,6 @@ func printSetTable(results []scoop.OutdatedApp) {
 	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, bucketW, statusW)
 	fmt.Printf(rowFmt, hdrName, hdrVer, hdrLate, hdrBucket, hdrStatus)
 	fmt.Printf(rowFmt, dashRun(nameW), dashRun(verW), dashRun(lateW), dashRun(bucketW), dashRun(statusW))
-	fmt.Println()
 
 	for _, r := range results {
 		status := r.Status
@@ -155,12 +151,12 @@ func printSetTable(results []scoop.OutdatedApp) {
 }
 
 func pickColor(status string) *color.Color {
-	switch {
-	case status == "Skipped":
+	switch  status{
+	case "Skipped":
 		return color.New(color.FgYellow)
-	case status == "Not github", status == "Proxy set":
+	case "Not github", "Proxy set":
 		return color.New(color.FgWhite)
-	case status == "Failed":
+	case "Failed":
 		return color.New(color.FgRed)
 	default:
 		return color.New(color.FgGreen)
