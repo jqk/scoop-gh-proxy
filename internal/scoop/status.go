@@ -28,7 +28,7 @@ func getOutdatedApps() (apps []OutdatedApp, e error) {
 	}
 
 	lineCount := len(nonEmptyLines)
-	if lineCount == 1 && nonEmptyLines[0] == "Everything updated" {
+	if lineCount == 1 && nonEmptyLines[0] == "Everything is ok!" {
 		return apps, nil // 没有待升级的软件，直接返回。scoop status -l 不会什么都不返回
 	} else if lineCount < 2 { // 至少要有标题行和分隔线
 		return nil, fmt.Errorf("scoop status -l 输出缺少标题行或分隔线")
