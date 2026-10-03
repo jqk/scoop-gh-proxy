@@ -2,20 +2,18 @@ package scoop
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
-// getOutdatedApps 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。
+// getOutdatedApps 执行并解析 scoop status -l。
 // 非空行第一行为标题行，第二行为分隔线，其余为数据行。
 // 按分隔线确定各列起始位置，据此切分每行数据。
-func getOutdatedApps(rootPath string) (apps []OutdatedApp, e error) {
-	out, err := exec.Command("scoop", "status", "-l").CombinedOutput()
+func getOutdatedApps() ([]OutdatedApp, error) {
+	s, err := runScoop("status", "-l")
 	if err != nil {
 		return nil, err
 	}
 
-	s := stripAnsi(string(out))
 	lines := strings.SplitSeq(s, "\n") // 分为两个语句是为了调试方便
 
 	// 如果命令执行结果有空行，直接处理会增加许多逻辑判断，所以先把可能的空行排除
@@ -29,7 +27,7 @@ func getOutdatedApps(rootPath string) (apps []OutdatedApp, e error) {
 
 	lineCount := len(nonEmptyLines)
 	if lineCount == 1 && nonEmptyLines[0] == "Everything is ok!" {
-		return apps, nil // 没有待升级的软件，直接返回。scoop status -l 不会什么都不返回
+		return nil, nil // 没有待升级的软件，直接返回。scoop status -l 不会什么都不返回
 	} else if lineCount < 2 { // 至少要有标题行和分隔线
 		return nil, fmt.Errorf("scoop status -l 输出缺少标题行或分隔线")
 	}
@@ -40,8 +38,9 @@ func getOutdatedApps(rootPath string) (apps []OutdatedApp, e error) {
 		return nil, fmt.Errorf("scoop status -l 分隔线列数不足 5，无法解析")
 	}
 
+	var apps []OutdatedApp
 	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
-		apps = append(apps, createOutdatedApp(rootPath, line, starts))
+		apps = append(apps, createOutdatedApp(line, starts))
 	}
 
 	return apps, nil
@@ -68,7 +67,7 @@ func findColumnStarts(sep string) (starts []int) {
 }
 
 // createOutdatedApp 按列起始位置切分一行，返回 OutdatedApp 结构体。
-func createOutdatedApp(rootPath string, line string, starts []int) OutdatedApp {
+func createOutdatedApp(line string, starts []int) OutdatedApp {
 	length := len(line)
 
 	cut := func(a, b int) string { // 从行字符串中，按起止位置切分段落的闭包
@@ -93,10 +92,8 @@ func createOutdatedApp(rootPath string, line string, starts []int) OutdatedApp {
 	}
 
 	if app.Missing != "" || app.Info != "" || app.Latest == "" || app.Installed == "" {
-		app.Status = SetSkipped // 信息不全，或过多，如被值过 scoop hold，或者已经 deprecated 等
+		app.Status = Skipped // 信息不全，或过多，如被值过 scoop hold，或者已经 deprecated 等
 	}
-
-	fillBucketManifest(rootPath, &app)
 
 	return app
 }

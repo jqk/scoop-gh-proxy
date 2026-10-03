@@ -3,7 +3,6 @@ package scoop
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -17,13 +16,12 @@ type ScoopConfig struct {
 
 // GetScoopConfig 执行 scoop config 命令，获取配置值。
 func GetScoopConfig() (ScoopConfig, error) {
-	out, err := exec.Command("scoop", "config").Output() // 此处返回的是包含转义码在内的字节数组
+	s, err := runScoop("config") // 输出含 ANSI 转义码，runScoop 已去除
 	if err != nil {
 		return ScoopConfig{}, fmt.Errorf("执行 scoop config 失败: %w", err)
 	}
 
 	cfg := ScoopConfig{}
-	s := stripAnsi(string(out))
 	lines := strings.SplitSeq(s, "\n") // 分为两个语句是为了调试方便
 
 	for line := range lines {
@@ -89,14 +87,16 @@ func validateConfig(cfg *ScoopConfig) error {
 	return nil
 }
 
+// setScoopProxy set 命令的收尾：把当前 proxy 备份到 gh_scoop_proxy_backup，再清空 proxy，
+// 避免 scoop update 时与 gh_proxy 冲突
 func setScoopProxy(cfg *ScoopConfig) error {
 	if cfg.Proxy != "" {
 		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
-			if err := exec.Command("scoop", "config", "gh_scoop_proxy_backup", cfg.Proxy).Run(); err != nil {
+			if _, err := runScoop("config", "gh_scoop_proxy_backup", cfg.Proxy); err != nil {
 				return err
 			}
 		}
-		if err := exec.Command("scoop", "config", "rm", "proxy").Run(); err != nil { //清空
+		if _, err := runScoop("config", "rm", "proxy"); err != nil { // 清空
 			return err
 		}
 	}
@@ -104,9 +104,10 @@ func setScoopProxy(cfg *ScoopConfig) error {
 	return nil
 }
 
+// restoreScoopProxy restore 命令的收尾：把 gh_scoop_proxy_backup 中备份的值恢复到 proxy
 func restoreScoopProxy(cfg *ScoopConfig) error {
 	if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
-		if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
+		if _, err := runScoop("config", "proxy", cfg.GhScoopProxyBackup); err != nil {
 			return err
 		}
 	}

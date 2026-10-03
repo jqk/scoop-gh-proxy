@@ -19,7 +19,7 @@ go build -o scoop-gh-proxy.exe .
 - `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / RestoreScoopProxy）
-- `internal/scoop/status.go` — 解析 scoop status -l；fillBucketManifest 定位 bucket 与 manifest
+- `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
@@ -57,6 +57,12 @@ go build -o scoop-gh-proxy.exe .
 - `Manifest backup exists` — 备份已存在
 - `Manifest backup failed` — 备份失败
 
+## 设计不变量（幂等性，重构或 GUI 化时不得破坏）
+- set 重复执行安全：已处理的 manifest 跳过（Proxy set / Manifest backup exists），不重复修改、不覆盖已有备份
+- restore 重复执行安全：无备份的 app 无操作；proxy 已恢复（Proxy == GhScoopProxyBackup）时跳过
+- proxy 设置与恢复条件对称：set 仅在 Proxy 非空时备份并清空；restore 仅在 GhScoopProxyBackup 非空且与当前 Proxy 不同时恢复
+- manifest 中未被修改的字节逐字节保留：applyManifestEdits 只做命中区间的替换
+
 ## 命令行为
 - `--set` — 定位 + 备份 + 修改 [app].json，输出 "Manifest to Set: N" + 明细表
 - `--restore` — 还原 backup，输出 "Manifest to restore: N" + 明细表（Name + Bucket）
@@ -65,8 +71,8 @@ go build -o scoop-gh-proxy.exe .
 - dryRun 标志只存在于命令流程层（SetProxyForOutdatedApps / RestoreOutdatedAppManifests），manifest 层只做只读定位
 
 ## 共享逻辑
-- `locateManifest` — 只读定位待修改 url 并流转 Status（set 与 status 共用）
-- `FindRestoreOutdatedApps` — 只读扫描 backup（restore 与 status 共用）
+- manifest 的只读定位与 backup 的只读扫描均为纯查询，set、restore、status 三条命令共用同一实现；
+  是否落盘仅由命令层的 dryRun 决定，核心层不打印、不退出、不调用 os.Exit
 
 ## 编译验证
 ```

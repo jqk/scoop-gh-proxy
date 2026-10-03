@@ -21,11 +21,11 @@ type ManifestEdit struct {
 	Replacement []byte
 }
 
-// analizeManifest 读取 manifest 文件并只读定位待修改的 url。
+// analyzeManifest 读取 manifest 文件并只读定位待修改的 url。
 // 有待修改的 url 时设置 Status = IsGitHub，并把原始内容与编辑清单记录到 app，供后续在别处应用；
 // url 都已带代理前缀时设置 Status = ProxySet；没有 github 下载链接时设置 Status = NotGitHub。
 // 返回 true 表示应该保存
-func analizeManifest(app *OutdatedApp, ghProxy string) (bool, error) {
+func analyzeManifest(app *OutdatedApp, ghProxy string) (bool, error) {
 	data, err := os.ReadFile(app.Manifest) // 读取 manifest 文件
 	if err != nil {
 		app.Status = ManifestError
@@ -45,7 +45,7 @@ func analizeManifest(app *OutdatedApp, ghProxy string) (bool, error) {
 	}
 	if len(edits) > 0 { // 说明需要设置 gh 代理
 		app.Status = IsGitHub
-		app.OriginalManifest = data // 只记录定位结果，实际修改在 backupManifest 中进行
+		app.OriginalManifest = data // 只记录定位结果，实际修改在 setProxiedManifest 中进行
 		app.Edits = edits
 		return true, nil
 	}

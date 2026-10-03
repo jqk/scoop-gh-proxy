@@ -22,6 +22,9 @@ func RunSet(dryRun bool) {
 	}
 
 	apps, err := scoop.SetProxyForOutdatedApps(&cfg, dryRun)
+	if err != nil {
+		error_("%s", err)
+	}
 	printSetSummary(apps)
 }
 

@@ -158,7 +158,7 @@ func TestLocateManifestItemFlow(t *testing.T) {
 	}
 
 	item := OutdatedApp{Name: "app", Manifest: manifest}
-	matched, err := analizeManifest(&item, testGhProxy)
+	matched, err := analyzeManifest(&item, testGhProxy)
 	if err != nil || !matched || item.Status != IsGitHub || len(item.Edits) != 3 {
 		t.Fatalf("首次定位不符: matched=%v err=%v status=%v edits=%d", matched, err, item.Status, len(item.Edits))
 	}
@@ -169,7 +169,7 @@ func TestLocateManifestItemFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	item2 := OutdatedApp{Name: "app", Manifest: manifest}
-	matched2, err := analizeManifest(&item2, testGhProxy)
+	matched2, err := analyzeManifest(&item2, testGhProxy)
 	if err != nil || matched2 || item2.Status != ProxySet {
 		t.Fatalf("再次定位应为 Proxy set: matched=%v err=%v status=%v", matched2, err, item2.Status)
 	}
@@ -194,7 +194,7 @@ func TestLocateManifestStatus(t *testing.T) {
 				t.Fatal(err)
 			}
 			item := OutdatedApp{Name: tt.name, Manifest: manifest}
-			matched, err := analizeManifest(&item, testGhProxy)
+			matched, err := analyzeManifest(&item, testGhProxy)
 			if err != nil || item.Status != tt.want || matched != tt.matched {
 				t.Fatalf("status=%v matched=%v err=%v，期望 %v/%v", item.Status, matched, err, tt.want, tt.matched)
 			}

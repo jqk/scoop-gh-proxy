@@ -118,6 +118,13 @@ uv          0.12.19           0.12.20        extras      Is github
 
 如果 `Manifest to Set: 0`，则无后续明细输出。
 
+Status 列的取值：
+
+- `Is github` — 存在待修改的 GitHub URL
+- `Proxy set` — url 已带代理前缀（重复执行 `set` 时显示，无需处理）
+- `Not github` — 无 GitHub URL
+- `Skipped` — 信息不全或被 hold 等，跳过
+
 ### 4.2 restore 命令
 
 - 在执行完 `set` 命令及 `scoop update` 命令后，执行本命令，恢复被修改的 scoop config。

@@ -6,7 +6,7 @@ const (
 	Unknown        OutdatedAppStatus = "Unknown"                // 刚刚初始化，应继续执行
 	IsGitHub       OutdatedAppStatus = "Is github"              // 下载链接是 github 的，到当前执行阶段仍是成功的，可继续执行
 	NotGitHub      OutdatedAppStatus = "Not github"             // 下载链接不是 github 的，终止执行
-	SetSkipped     OutdatedAppStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过并终止执行
+	Skipped        OutdatedAppStatus = "Skipped"                // 由于信息不全，或 hold 等原因，跳过并终止执行
 	NoManifest     OutdatedAppStatus = "Manifest not found"     // manifest 文件不存在，终止执行
 	ManifestError  OutdatedAppStatus = "Manifest error"         // manifest 文件存在但读取失败，终止执行
 	BackupExists   OutdatedAppStatus = "Manifest backup exists" // manifest 备份已存在，终止执行
