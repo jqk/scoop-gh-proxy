@@ -228,19 +228,25 @@ out := applyManifestEdits(data, edits)
 
 ### 6.3 程序组织结构
 
+核心功能与命令行交互分层，核心库不输出、不退出，将来可供图形化界面复用。
+
 ```text
-scoop-proxy/
+scoop-gh-proxy/
 │
-├── go.mod
-├── go.sum
-├── README.md
+├── go.mod / go.sum
+├── README.md / AGENTS.md
+├── main.go                 # 程序入口
+├── build.bat               # 编译脚本
 │
-├── main.go         # 程序入口
-├── cli.go          # CLI 命令处理
-├── scoop_config.go # scoop config 信息处理
-├── scoop_status.go # scoop status -l 信息处理
-├── manifest.go     # manifest 文件处理
-├── bucket.go       # manifest 文件备份及还原处理
-├── output.go       # 输出处理
-└── build.bat       # 编译脚本
+└── internal/
+    ├── cli/                # 命令行交互层（彩色输出、明细表、退出码）
+    │   ├── cli.go
+    │   └── output.go
+    └── scoop/              # 核心库（只返回数据与错误）
+        ├── config.go       # scoop config 信息处理
+        ├── status.go       # scoop status -l 信息处理
+        ├── runner.go       # set 命令主流程
+        ├── manifest.go     # manifest 文件处理
+        ├── bucket.go       # manifest 文件备份及还原处理
+        └── tools.go
 ```

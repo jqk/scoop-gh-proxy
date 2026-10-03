@@ -5,12 +5,14 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+
+	"github.com/zhangsan/scoop-gh-proxy/internal/cli"
 )
 
 const version = "1.0.0"
 
 func main() {
-	color.NoColor = !isTTY(os.Stdout)
+	color.NoColor = !cli.IsTTY(os.Stdout)
 
 	switch len(os.Args) {
 	case 1:
@@ -19,11 +21,11 @@ func main() {
 	default:
 		switch os.Args[1] {
 		case "--set":
-			runSet(false)
+			cli.RunSet(false)
 		case "--restore":
-			runRestore(false)
+			cli.RunRestore(false)
 		case "--status":
-			runStatus()
+			cli.RunStatus()
 		case "--help", "-h":
 			printUsage()
 		case "--version", "-v":

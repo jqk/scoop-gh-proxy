@@ -1,4 +1,4 @@
-package main
+package scoop
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ type OutdatedApp struct {
 	ManifestBackup   string            // 本程序的属性：manifest 备份文件名
 	Status           OutdatedAppStatus // 本程序的属性：状态值
 	OriginalManifest []byte            // 本程序的属性：manifest 原始内容
-	Edits            []manifestEdit    // 本程序的属性：manifest 中待应用的 url 修改清单
+	Edits            []ManifestEdit    // 本程序的属性：manifest 中待应用的 url 修改清单
 }
 
 // getOutdatedApps 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。

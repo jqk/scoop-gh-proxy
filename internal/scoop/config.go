@@ -1,4 +1,4 @@
-package main
+package scoop
 
 import (
 	"fmt"
@@ -15,8 +15,8 @@ type ScoopConfig struct {
 	GhProxy            string // 本程序专用属性，定义面向 github 下载链接的数据代理
 }
 
-// getScoopConfig 执行 scoop config 命令，获取配置值。
-func getScoopConfig() (ScoopConfig, error) {
+// GetScoopConfig 执行 scoop config 命令，获取配置值。
+func GetScoopConfig() (ScoopConfig, error) {
 	out, err := exec.Command("scoop", "config").Output() // 此处返回的是包含转义码在内的字节数组
 	if err != nil {
 		return ScoopConfig{}, fmt.Errorf("执行 scoop config 失败: %w", err)

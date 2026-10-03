@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -7,25 +7,27 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+
+	"github.com/zhangsan/scoop-gh-proxy/internal/scoop"
 )
 
 // ---------------------------------------------------------------------------
 // set
 // ---------------------------------------------------------------------------
 
-func runSet(dryRun bool) {
-	cfg, err := getScoopConfig()
+func RunSet(dryRun bool) {
+	cfg, err := scoop.GetScoopConfig()
 	if err != nil {
 		error_("%s", err)
 		os.Exit(1)
 	}
 
-	rows, err := RunSetCommand(&cfg, dryRun)
+	rows, err := scoop.RunSetCommand(&cfg, dryRun)
 
 	printSetSummary(rows)
 }
 
-func printSetSummary(result []OutdatedApp) {
+func printSetSummary(result []scoop.OutdatedApp) {
 	count := len(result)
 	if count == 0 {
 		info("Manifest to Set: 0")
@@ -39,14 +41,14 @@ func printSetSummary(result []OutdatedApp) {
 // restore
 // ---------------------------------------------------------------------------
 
-func runRestore(dryRun bool) {
-	cfg, err := getScoopConfig()
+func RunRestore(dryRun bool) {
+	cfg, err := scoop.GetScoopConfig()
 	if err != nil {
 		error_("%s", err)
 		os.Exit(1)
 	}
 
-	items, err := findRestoreCommandItems(cfg.RootPath)
+	items, err := scoop.FindRestoreCommandItems(cfg.RootPath)
 	if err != nil {
 		error_("%s", err)
 		os.Exit(1)
@@ -54,7 +56,7 @@ func runRestore(dryRun bool) {
 
 	if !dryRun {
 		for i := range items {
-			if err := restoreManifest(&items[i]); err != nil {
+			if err := scoop.RestoreManifest(&items[i]); err != nil {
 				error_("还原 %s 失败: %v", items[i].Name, err)
 				continue
 			}
@@ -74,7 +76,7 @@ func runRestore(dryRun bool) {
 	printRestoreSummary(items, !dryRun)
 }
 
-func printRestoreSummary(items []RestoreCommandItem, showStatus bool) {
+func printRestoreSummary(items []scoop.RestoreCommandItem, showStatus bool) {
 	count := len(items)
 	if count == 0 {
 		info("Manifest to restore: 0")
@@ -123,9 +125,9 @@ func printRestoreSummary(items []RestoreCommandItem, showStatus bool) {
 // status（dry-run：先 reset 明细，后 set 明细，不修改任何文件）
 // ---------------------------------------------------------------------------
 
-func runStatus() {
-	runRestore(true)
-	runSet(true)
+func RunStatus() {
+	RunRestore(true)
+	RunSet(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -136,7 +138,7 @@ func runStatus() {
 // 共享：set 结果表
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []OutdatedApp) {
+func printSetTable(results []scoop.OutdatedApp) {
 	const (
 		hdrName   = "App Name"
 		hdrVer    = "Installed Version"

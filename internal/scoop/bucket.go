@@ -1,4 +1,4 @@
-package main
+package scoop
 
 import (
 	"encoding/json"
@@ -57,8 +57,8 @@ func backupManifest(item *OutdatedApp) error {
 	return os.WriteFile(item.Manifest, out, 0644) // 创建添加 github 代理后的文件
 }
 
-// restoreManifest 将备份文件恢复为正式文件
-func restoreManifest(item *RestoreCommandItem) error {
+// RestoreManifest 将备份文件恢复为正式文件
+func RestoreManifest(item *RestoreCommandItem) error {
 	if err := os.Remove(item.Manifest); err != nil && !os.IsNotExist(err) {
 		item.Status = RestoreFailed
 		return err
@@ -73,8 +73,8 @@ func restoreManifest(item *RestoreCommandItem) error {
 	return nil
 }
 
-// findRestoreCommandItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
-func findRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
+// FindRestoreCommandItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
+func FindRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
 	// scoop 所有 bucket 在此目录下，即 <rootPath>\buckets\，如 E:\Scoop\buckets
 	scoopBucketsRoot := filepath.Join(rootPath, "buckets")
 	var items []RestoreCommandItem

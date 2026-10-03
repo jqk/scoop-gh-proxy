@@ -1,4 +1,4 @@
-package main
+package scoop
 
 import (
 	"bytes"
@@ -13,9 +13,9 @@ import (
 
 const githubURLPrefix = "https://github.com"
 
-// manifestEdit 表示 manifest 中一处待替换的 url 字符串字面量。
+// ManifestEdit 表示 manifest 中一处待替换的 url 字符串字面量。
 // 应用时把原文件字节区间 [Start, End)（含两侧引号）整体替换为 Replacement
-type manifestEdit struct {
+type ManifestEdit struct {
 	Start       int
 	End         int
 	Replacement []byte
@@ -49,7 +49,7 @@ func locateManifest(item *OutdatedApp, ghProxy string) (matched bool, err error)
 // locateManifestEdits 只读扫描 manifest，定位全部待加代理前缀的 url 位置。
 // 函数的调用结构就是 manifest 的结构：顶层对象中只有 url 和 architecture
 // 两个成员值得看，其它成员整段跳过
-func locateManifestEdits(data []byte, ghProxy string) ([]manifestEdit, error) {
+func locateManifestEdits(data []byte, ghProxy string) ([]ManifestEdit, error) {
 	dec := jsontext.NewDecoder(bytes.NewReader(data))
 
 	if dec.PeekKind() != jsontext.KindBeginObject { // 空文件或顶层不是对象
@@ -57,7 +57,7 @@ func locateManifestEdits(data []byte, ghProxy string) ([]manifestEdit, error) {
 	}
 	dec.ReadToken() // 消耗 '{'
 
-	var edits []manifestEdit
+	var edits []ManifestEdit
 	for dec.PeekKind() != jsontext.KindEndObject {
 		name, err := readMemberName(dec)
 		if err != nil {
@@ -91,7 +91,7 @@ func locateManifestEdits(data []byte, ghProxy string) ([]manifestEdit, error) {
 
 // scanArchitecture 扫描 architecture 的值。它的值是对象，每个成员是一个架构块：
 // 成员名是 64bit 之类的架构名，块的值是块对象
-func scanArchitecture(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit) ([]manifestEdit, error) {
+func scanArchitecture(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit) ([]ManifestEdit, error) {
 	if dec.PeekKind() != jsontext.KindBeginObject {
 		return edits, dec.SkipValue() // architecture 的值不是对象，跳过
 	}
@@ -114,7 +114,7 @@ func scanArchitecture(dec *jsontext.Decoder, ghProxy string, edits []manifestEdi
 }
 
 // scanArchBlock 扫描一个架构块的值。它的值是对象，其中只有 url 成员算数，其余跳过
-func scanArchBlock(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit) ([]manifestEdit, error) {
+func scanArchBlock(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit) ([]ManifestEdit, error) {
 	if dec.PeekKind() != jsontext.KindBeginObject {
 		return edits, dec.SkipValue() // 架构块的值不是对象，跳过
 	}
@@ -150,7 +150,7 @@ func readMemberName(dec *jsontext.Decoder) (string, error) {
 }
 
 // scanURLValue 扫描 url 成员的值：字符串按单个处理，数组逐元素处理，其它类型跳过
-func scanURLValue(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit) ([]manifestEdit, error) {
+func scanURLValue(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit) ([]ManifestEdit, error) {
 	switch dec.PeekKind() {
 	case jsontext.KindString:
 		return scanURLElement(dec, ghProxy, edits)
@@ -179,7 +179,7 @@ func scanURLValue(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit) (
 // scanURLElement 读取一个字符串字面量，命中修改规则则记录一条编辑。
 // ReadValue 返回含两侧引号的原始字节，与文件内容逐字节一致，
 // 因此字面量区间可以直接由结束位置减去字节长度得出
-func scanURLElement(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit) ([]manifestEdit, error) {
+func scanURLElement(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit) ([]ManifestEdit, error) {
 	raw, err := dec.ReadValue() // 原始字节，含两侧引号
 	if err != nil {
 		return nil, err
@@ -201,12 +201,12 @@ func scanURLElement(dec *jsontext.Decoder, ghProxy string, edits []manifestEdit)
 
 	end := int(dec.InputOffset()) // 刚读过的字面量的结束位置（闭引号之后）
 	start := end - len(raw)
-	return append(edits, manifestEdit{Start: start, End: end, Replacement: replacement}), nil
+	return append(edits, ManifestEdit{Start: start, End: end, Replacement: replacement}), nil
 }
 
 // applyManifestEdits 把编辑清单应用到原字节，返回完整的新文件内容。
 // edits 必须按 Start 升序排列，顺序扫描的结果天然如此
-func applyManifestEdits(data []byte, edits []manifestEdit) []byte {
+func applyManifestEdits(data []byte, edits []ManifestEdit) []byte {
 	out := make([]byte, 0, len(data))
 	last := 0
 	for _, e := range edits {

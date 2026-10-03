@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/fatih/color"
 )
 
-func isTTY(f *os.File) bool {
+func IsTTY(f *os.File) bool {
 	info, err := f.Stat()
 	if err != nil {
 		return false
