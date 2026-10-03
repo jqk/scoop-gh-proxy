@@ -104,7 +104,7 @@ func setScoopProxy(cfg *ScoopConfig) error {
 	return nil
 }
 
-func RestoreScoopProxy(cfg *ScoopConfig) error {
+func restoreScoopProxy(cfg *ScoopConfig) error {
 	if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
 		if err := exec.Command("scoop", "config", "proxy", cfg.GhScoopProxyBackup).Run(); err != nil {
 			return err

@@ -10,34 +10,8 @@ import (
 
 const backupSuffix = "-gh-backup.json" // manifest 备份文件的后缀。格式为 <app>-gh-backup.json
 
-type RestoreCommandStatus string // RestoreCommandStatus 表示单条 restore 记录的状态
-
-const (
-	RestoreSuccess RestoreCommandStatus = "Success"
-	RestoreFailed  RestoreCommandStatus = "Failed"
-)
-
-// RestoreCommandItem 一条待还原的 app 记录
-type RestoreCommandItem struct {
-	Name           string               // 应用名
-	Bucket         string               // 桶名
-	Manifest       string               // manifest 文件名
-	ManifestBackup string               // manifest 备份文件名
-	Status         RestoreCommandStatus // 执行后填充
-}
-
-// NewRestoreCommandItem 创建 RestoreCommandItem 对象
-func NewRestoreCommandItem(name, bucket, manifestDir string) RestoreCommandItem {
-	return RestoreCommandItem{
-		Name:           name,
-		Bucket:         bucket,
-		Manifest:       filepath.Join(manifestDir, name+".json"),
-		ManifestBackup: filepath.Join(manifestDir, name+backupSuffix),
-	}
-}
-
-// backupManifest 备份原始 manifest，再把应用了代理前缀的新内容写入 manifest 文件
-func backupManifest(item *OutdatedApp) error {
+// setProxiedManifest 备份原始 manifest，再把应用了代理前缀的新内容写入 manifest 文件
+func setProxiedManifest(item *OutdatedApp) error {
 	if item.Status != IsGitHub {
 		return nil // 不是 github 的，跳过
 	}
@@ -57,8 +31,8 @@ func backupManifest(item *OutdatedApp) error {
 	return os.WriteFile(item.Manifest, out, 0644) // 创建添加 github 代理后的文件
 }
 
-// RestoreManifest 将备份文件恢复为正式文件
-func RestoreManifest(item *RestoreCommandItem) error {
+// restoreProxiedManifest 将备份文件恢复为正式文件
+func restoreProxiedManifest(item *OutdatedApp) error {
 	if err := os.Remove(item.Manifest); err != nil && !os.IsNotExist(err) {
 		item.Status = RestoreFailed
 		return err
@@ -73,17 +47,23 @@ func RestoreManifest(item *RestoreCommandItem) error {
 	return nil
 }
 
-// FindRestoreCommandItems 只读扫描，收集 buckets 下所有 backupSuffix 文件
-func FindRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
+// findProxiedManifests 只读扫描，收集 buckets 下所有已备份（待还原）的 app
+func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 	// scoop 所有 bucket 在此目录下，即 <rootPath>\buckets\，如 E:\Scoop\buckets
 	scoopBucketsRoot := filepath.Join(rootPath, "buckets")
-	var items []RestoreCommandItem
+	var apps []OutdatedApp
 	var bucketName string // 此处声明是为了能在闭包中引用
 
-	appendQulifiedItems := func(fileName, manifestDir string) { // 定义闭包是为了少传参
+	appendQulifiedApp := func(fileName, manifestDir string) { // 定义闭包是为了少传参
 		// manifest 文件名是 <appName> + <backupSuffix>
 		if appName, ok := strings.CutSuffix(fileName, backupSuffix); ok {
-			items = append(items, NewRestoreCommandItem(appName, bucketName, manifestDir))
+			apps = append(apps, OutdatedApp{
+				Name:           appName,
+				Bucket:         bucketName,
+				Manifest:       filepath.Join(manifestDir, appName+".json"),
+				ManifestBackup: filepath.Join(manifestDir, appName+backupSuffix),
+				Status:         Unknown, // 初始化，待还原时更新
+			})
 		}
 	}
 
@@ -92,7 +72,7 @@ func FindRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
 	// 不全使用 Walk() 是为了避免进入 .git 等无关的目录
 	bucketList, err := os.ReadDir(scoopBucketsRoot)
 	if err != nil {
-		return items, err
+		return apps, err
 	}
 
 	for _, budgetEntry := range bucketList { // 第一轮循环，列出如 E:\Scoop\buckets 下的所有桶
@@ -118,19 +98,19 @@ func FindRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
 					// 使用 Walk() 是因为有少数桶的 bucket 子目录是多层目录。注意 path 是包含路径的完整文件名
 					filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 						if err == nil && !d.IsDir() { // 此处已是文件。filepath.Dir() 保证多层目录也有效
-							appendQulifiedItems(d.Name(), filepath.Dir(path))
+							appendQulifiedApp(d.Name(), filepath.Dir(path))
 						}
 						return nil
 					})
 				}
 			} else {
 				// 此处已是文件。少数桶将 manifest 直接放在桶的目录下。此时，桶的路径就是 manifest 的路径
-				appendQulifiedItems(bucketItemName, bucketDir)
+				appendQulifiedApp(bucketItemName, bucketDir)
 			}
 		}
 	}
 
-	return items, nil
+	return apps, nil
 }
 
 // createManifestBackupName 根据 manifest 文件名，创建其备份文件名

@@ -53,7 +53,7 @@ func RunRestore(dryRun bool) {
 	printRestoreSummary(items, !dryRun)
 }
 
-func printRestoreSummary(items []scoop.RestoreCommandItem, showStatus bool) {
+func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 	count := len(items)
 	if count == 0 {
 		info("Manifest to restore: 0")
@@ -80,12 +80,8 @@ func printRestoreSummary(items []scoop.RestoreCommandItem, showStatus bool) {
 		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
 		fmt.Println()
 		for _, it := range items {
-			status := string(it.Status)
-			if status == "" {
-				status = "Skipped"
-			}
-			c := pickColor(status)
-			c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, status)
+			c := pickColor(string(it.Status))
+			c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
 		}
 	} else {
 		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
@@ -159,11 +155,13 @@ func printSetTable(results []scoop.OutdatedApp) {
 }
 
 func pickColor(status string) *color.Color {
-	switch status {
-	case "Skipped":
+	switch {
+	case status == "Skipped":
 		return color.New(color.FgYellow)
-	case "Not github", "Proxy set":
+	case status == "Not github", status == "Proxy set":
 		return color.New(color.FgWhite)
+	case status == "Failed":
+		return color.New(color.FgRed)
 	default:
 		return color.New(color.FgGreen)
 	}

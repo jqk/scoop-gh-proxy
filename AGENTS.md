@@ -48,6 +48,8 @@ go build -o scoop-gh-proxy.exe .
 - `Is github` — 存在待修改的 GitHub URL
 - `Not github` — 无待修改的 URL
 - `Proxy set` — url 已带 gh_proxy 前缀（重复执行 set 时的正常状态，无需修改）
+- `Success` — restore 还原成功
+- `Failed` — restore 还原失败
 - `Skipped` — status 行信息不全（Info/Missing 列非空、版本缺失等）
 - `Manifest not found` — bucket 或 manifest 文件找不到
 - `Manifest error` — manifest 读取或解析失败
@@ -63,7 +65,7 @@ go build -o scoop-gh-proxy.exe .
 
 ## 共享逻辑
 - `locateManifest` — 只读定位待修改 url 并流转 Status（set 与 status 共用）
-- `FindRestoreCommandItems` — 只读扫描 backup（restore 与 status 共用）
+- `FindRestoreOutdatedApps` — 只读扫描 backup（restore 与 status 共用）
 
 ## 编译验证
 ```

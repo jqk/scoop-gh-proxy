@@ -28,7 +28,7 @@ func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, erro
 		count++ // 找到需要修改 GitHub 代理的数量
 
 		if !dryRun {
-			if err := backupManifest(app); err != nil {
+			if err := setProxiedManifest(app); err != nil {
 				app.Status = BackupFailed
 			}
 		}
@@ -43,23 +43,21 @@ func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, erro
 }
 
 // RestoreOutdatedAppManifests restore 命令主流程：还原所有已备份的 manifest，
-// 并恢复 scoop config 的 proxy。单条还原失败只记录在 items[i].Status；
+// 并恢复 scoop config 的 proxy。单条还原失败只记录在 apps[i].Status；
 // 返回的 err 表示扫描 buckets 失败或恢复 proxy 失败
-func RestoreOutdatedAppManifests(cfg *ScoopConfig, dryRun bool) ([]RestoreCommandItem, error) {
-	items, err := FindRestoreCommandItems(cfg.RootPath)
+func RestoreOutdatedAppManifests(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
+	apps, err := findProxiedManifests(cfg.RootPath)
 	if err != nil {
-		return items, fmt.Errorf("扫描 buckets 目录失败: %v", err)
+		return apps, fmt.Errorf("扫描 buckets 目录失败: %v", err)
 	}
 
 	if !dryRun {
-		for i := range items {
-			_ = RestoreManifest(&items[i]) // 失败已记录在 items[i].Status，由明细表展示
+		for i := range apps {
+			_ = restoreProxiedManifest(&apps[i]) // 失败已记录在 apps[i].Status，由明细表展示
 		}
 
-		err = RestoreScoopProxy(cfg)
+		err = restoreScoopProxy(cfg)
 	}
 
-	return items, err
+	return apps, err
 }
-
-
