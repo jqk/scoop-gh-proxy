@@ -25,7 +25,7 @@ func runSet(dryRun bool) {
 	printSetSummary(rows)
 }
 
-func printSetSummary(result []SetCommandItem) {
+func printSetSummary(result []OutdatedApp) {
 	count := len(result)
 	if count == 0 {
 		info("Manifest to Set: 0")
@@ -136,7 +136,7 @@ func runStatus() {
 // 共享：set 结果表
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []SetCommandItem) {
+func printSetTable(results []OutdatedApp) {
 	const (
 		hdrName   = "App Name"
 		hdrVer    = "Installed Version"

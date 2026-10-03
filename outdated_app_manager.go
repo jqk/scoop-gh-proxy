@@ -5,32 +5,32 @@ import (
 	"os/exec"
 )
 
-func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]SetCommandItem, error) {
-	rows, err := parseScoopStatus(cfg.RootPath)
+func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
+	apps, err := getOutdatedApps()
 	if err != nil {
-		return rows, fmt.Errorf("执行 scoop status -l 失败: %v", err)
+		return apps, fmt.Errorf("执行 scoop status -l 失败: %v", err)
 	}
 
 	count := 0
 
-	for i := range rows {
-		r := &rows[i]
+	for i := range apps {
+		app := &apps[i]
 
-		if r.Status != Unknown {
+		if app.Status != Unknown {
 			continue // 只处理刚刚初始化，没有被处理过的
 		}
-		if !fillBucketManifest(cfg, r) {
+		if !fillBucketManifest(cfg, app) {
 			continue // 找不到对应的 manifest 的文件信息，无法继续处理，就结束
 		}
-		if matched, err := locateManifest(r, cfg.GhProxy); err != nil || !matched {
+		if matched, err := locateManifest(app, cfg.GhProxy); err != nil || !matched {
 			continue // 操作 manifest 文件失败，或者没有待修改的 url，结束处理
 		}
 
 		count++ // 找到需要修改 GitHub 代理的数量
 
 		if !dryRun {
-			if err := backupManifest(r); err != nil {
-				r.Status = BackupFailed
+			if err := backupManifest(app); err != nil {
+				app.Status = BackupFailed
 			}
 		}
 	}
@@ -40,20 +40,20 @@ func RunSetCommand(cfg *ScoopConfig, dryRun bool) ([]SetCommandItem, error) {
 		err = backupAndSetProxy(cfg)
 	}
 
-	return rows, err
+	return apps, err
 }
 
-func fillBucketManifest(cfg *ScoopConfig, r *SetCommandItem) bool {
-	if r.Bucket = findBucket(cfg.RootPath, r.Name); r.Bucket == "" {
-		r.Status = NoManifest
+func fillBucketManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
+	if app.Bucket = findBucket(cfg.RootPath, app.Name); app.Bucket == "" {
+		app.Status = NoManifest
 		return false
 	}
-	if r.Manifest = findManifest(cfg.RootPath, r.Name, r.Bucket); r.Manifest == "" {
-		r.Status = NoManifest
+	if app.Manifest = findManifest(cfg.RootPath, app.Name, app.Bucket); app.Manifest == "" {
+		app.Status = NoManifest
 		return false
 	}
 
-	r.ManifestBackup = createManifestBackupName(r.Manifest) // 有 manifest 才确定备份文件名
+	app.ManifestBackup = createManifestBackupName(app.Manifest) // 有 manifest 才确定备份文件名
 	return true
 }
 

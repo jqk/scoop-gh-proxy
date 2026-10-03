@@ -23,7 +23,7 @@ type manifestEdit struct {
 
 // locateManifest 读取 manifest 文件并只读定位待修改的 url。
 // 命中时设置 Status = IsGitHub，并把原始内容与编辑清单记录到 item，供后续在别处应用
-func locateManifest(item *SetCommandItem, ghProxy string) (matched bool, err error) {
+func locateManifest(item *OutdatedApp, ghProxy string) (matched bool, err error) {
 	data, err := os.ReadFile(item.Manifest) // 读取 manifest 文件
 	if err != nil {
 		item.Status = ManifestError

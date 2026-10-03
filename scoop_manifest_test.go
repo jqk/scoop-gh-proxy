@@ -145,7 +145,7 @@ func TestLocateManifestItemFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	item := SetCommandItem{Name: "app", Manifest: manifest}
+	item := OutdatedApp{Name: "app", Manifest: manifest}
 	matched, err := locateManifest(&item, testGhProxy)
 	if err != nil || !matched || item.Status != IsGitHub || len(item.Edits) != 3 {
 		t.Fatalf("首次定位不符: matched=%v err=%v status=%v edits=%d", matched, err, item.Status, len(item.Edits))
@@ -156,7 +156,7 @@ func TestLocateManifestItemFlow(t *testing.T) {
 	if err := os.WriteFile(manifest, out, 0644); err != nil {
 		t.Fatal(err)
 	}
-	item2 := SetCommandItem{Name: "app", Manifest: manifest}
+	item2 := OutdatedApp{Name: "app", Manifest: manifest}
 	matched2, err := locateManifest(&item2, testGhProxy)
 	if err != nil || matched2 || item2.Status != NotGitHub {
 		t.Fatalf("再次定位应为 Not github: matched=%v err=%v status=%v", matched2, err, item2.Status)

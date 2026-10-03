@@ -37,7 +37,7 @@ func NewRestoreCommandItem(name, bucket, manifestDir string) RestoreCommandItem 
 }
 
 // backupManifest 备份原始 manifest，再把应用了代理前缀的新内容写入 manifest 文件
-func backupManifest(item *SetCommandItem) error {
+func backupManifest(item *OutdatedApp) error {
 	if item.Status != IsGitHub {
 		return nil // 不是 github 的，跳过
 	}
@@ -116,9 +116,9 @@ func findRestoreCommandItems(rootPath string) ([]RestoreCommandItem, error) {
 					dir := filepath.Join(bucketDir, bucketItemName) // 如 E:\Scoop\buckets\extras\bucket
 
 					// 使用 Walk() 是因为有少数桶的 bucket 子目录是多层目录。注意 path 是包含路径的完整文件名
-					filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-						if err == nil && !info.IsDir() { // 此处已是文件。filepath.Dir() 保证多层目录也有效
-							appendQulifiedItems(info.Name(), filepath.Dir(path))
+					filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+						if err == nil && !d.IsDir() { // 此处已是文件。filepath.Dir() 保证多层目录也有效
+							appendQulifiedItems(d.Name(), filepath.Dir(path))
 						}
 						return nil
 					})
