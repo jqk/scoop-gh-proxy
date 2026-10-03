@@ -35,7 +35,7 @@ go build -o scoop-gh-proxy.exe .
 - 只处理顶层 `url` 与 `architecture.<架构>.url`（checkver、autoupdate 等不处理）
 - URL 值可以是 `string` 或字符串数组，统一处理
 - 只改 `https://github.com` 前缀的 URL，已带 gh_proxy 前缀的不重复改
-- install.json 解析用 struct + `encoding/json`（v1）
+- install.json 解析用 struct + `encoding/json/v2`（与 manifest 的 jsontext 同为 v2 系列）
 - bucket 布局：优先 `buckets\<b>\bucket\<app>.json`，备选 `buckets\<b>\<app>.json`
 - install.json 位于 `apps\<name>\current\install.json` 或 `scoop-install.json`
 

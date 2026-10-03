@@ -63,14 +63,10 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 
 	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
 	for _, it := range items {
-		if len(it.Name) > nameW {
-			nameW = len(it.Name)
-		}
-		if len(it.Bucket) > bucketW {
-			bucketW = len(it.Bucket)
-		}
-		if showStatus && len(string(it.Status)) > statusW {
-			statusW = len(string(it.Status))
+		nameW = max(nameW, len(it.Name))
+		bucketW = max(bucketW, len(it.Bucket))
+		if showStatus {
+			statusW = max(statusW, len(string(it.Status)))
 		}
 	}
 
@@ -119,21 +115,11 @@ func printSetTable(results []scoop.OutdatedApp) {
 
 	nameW, verW, lateW, bucketW, statusW := len(hdrName), len(hdrVer), len(hdrLate), len(hdrBucket), len(hdrStatus)
 	for _, r := range results {
-		if len(r.Name) > nameW {
-			nameW = len(r.Name)
-		}
-		if len(r.Installed) > verW {
-			verW = len(r.Installed)
-		}
-		if len(r.Latest) > lateW {
-			lateW = len(r.Latest)
-		}
-		if len(r.Bucket) > bucketW {
-			bucketW = len(r.Bucket)
-		}
-		if len(r.Status) > statusW {
-			statusW = len(r.Status)
-		}
+		nameW = max(nameW, len(r.Name))
+		verW = max(verW, len(r.Installed))
+		lateW = max(lateW, len(r.Latest))
+		bucketW = max(bucketW, len(r.Bucket))
+		statusW = max(statusW, len(r.Status))
 	}
 
 	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, bucketW, statusW)
