@@ -9,7 +9,7 @@ import (
 // getOutdatedApps 执行并解析 scoop status -l，并据 rootPath 填充每行的 bucket。
 // 非空行第一行为标题行，第二行为分隔线，其余为数据行。
 // 按分隔线确定各列起始位置，据此切分每行数据。
-func getOutdatedApps() (apps []OutdatedApp, e error) {
+func getOutdatedApps(rootPath string) (apps []OutdatedApp, e error) {
 	out, err := exec.Command("scoop", "status", "-l").CombinedOutput()
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func getOutdatedApps() (apps []OutdatedApp, e error) {
 	}
 
 	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
-		apps = append(apps, createOutdatedApp(line, starts))
+		apps = append(apps, createOutdatedApp(rootPath, line, starts))
 	}
 
 	return apps, nil
@@ -68,7 +68,7 @@ func findColumnStarts(sep string) (starts []int) {
 }
 
 // createOutdatedApp 按列起始位置切分一行，返回 OutdatedApp 结构体。
-func createOutdatedApp(line string, starts []int) OutdatedApp {
+func createOutdatedApp(rootPath string, line string, starts []int) OutdatedApp {
 	length := len(line)
 
 	cut := func(a, b int) string { // 从行字符串中，按起止位置切分段落的闭包
@@ -95,6 +95,8 @@ func createOutdatedApp(line string, starts []int) OutdatedApp {
 	if app.Missing != "" || app.Info != "" || app.Latest == "" || app.Installed == "" {
 		app.Status = SetSkipped // 信息不全，或过多，如被值过 scoop hold，或者已经 deprecated 等
 	}
+
+	fillBucketManifest(rootPath, &app)
 
 	return app
 }

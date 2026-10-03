@@ -11,39 +11,39 @@ import (
 const backupSuffix = "-gh-backup.json" // manifest 备份文件的后缀。格式为 <app>-gh-backup.json
 
 // setProxiedManifest 备份原始 manifest，再把应用了代理前缀的新内容写入 manifest 文件
-func setProxiedManifest(item *OutdatedApp) error {
-	if item.Status != IsGitHub {
+func setProxiedManifest(app *OutdatedApp) error {
+	if app.Status != IsGitHub {
 		return nil // 不是 github 的，跳过
 	}
-	if fileExists(item.ManifestBackup) {
-		item.Status = BackupExists
+	if fileExists(app.ManifestBackup) {
+		app.Status = BackupExists
 		return nil // 备份文件已存在，跳过
 	}
 
-	if err := os.Rename(item.Manifest, item.ManifestBackup); err != nil { // 备份
-		item.Status = ManifestError
+	if err := os.Rename(app.Manifest, app.ManifestBackup); err != nil { // 备份
+		app.Status = ManifestError
 		return err
 	}
 
 	// 此处应用 locateManifest 定位出的修改：只替换命中的 url 字面量，其余字节原样保留
-	out := applyManifestEdits(item.OriginalManifest, item.Edits)
+	out := applyManifestEdits(app.OriginalManifest, app.Edits)
 
-	return os.WriteFile(item.Manifest, out, 0644) // 创建添加 github 代理后的文件
+	return os.WriteFile(app.Manifest, out, 0644) // 创建添加 github 代理后的文件
 }
 
 // restoreProxiedManifest 将备份文件恢复为正式文件
-func restoreProxiedManifest(item *OutdatedApp) error {
-	if err := os.Remove(item.Manifest); err != nil && !os.IsNotExist(err) {
-		item.Status = RestoreFailed
+func restoreProxiedManifest(app *OutdatedApp) error {
+	if err := os.Remove(app.Manifest); err != nil && !os.IsNotExist(err) {
+		app.Status = RestoreFailed
 		return err
 	}
 
-	if err := os.Rename(item.ManifestBackup, item.Manifest); err != nil { // 恢复
-		item.Status = RestoreFailed
+	if err := os.Rename(app.ManifestBackup, app.Manifest); err != nil { // 恢复
+		app.Status = RestoreFailed
 		return err
 	}
 
-	item.Status = RestoreSuccess
+	app.Status = RestoreSuccess
 	return nil
 }
 
@@ -54,7 +54,7 @@ func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 	var apps []OutdatedApp
 	var bucketName string // 此处声明是为了能在闭包中引用
 
-	appendQulifiedApp := func(fileName, manifestDir string) { // 定义闭包是为了少传参
+	appendProxiedApp := func(fileName, manifestDir string) { // 定义闭包是为了少传参
 		// manifest 文件名是 <appName> + <backupSuffix>
 		if appName, ok := strings.CutSuffix(fileName, backupSuffix); ok {
 			apps = append(apps, OutdatedApp{
@@ -68,8 +68,8 @@ func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 	}
 
 	// 获取 scoopBucketsRoot 下的子目录和文件列表
-	// 先用两轮 ReadDir()，再 Walk() 获取所有 mainfest 进行比较
-	// 不全使用 Walk() 是为了避免进入 .git 等无关的目录
+	// 先用两轮 ReadDir()，再 WalkDir() 获取所有 mainfest 进行比较
+	// 不全使用 WalkDir() 是为了避免进入 .git 等无关的目录
 	bucketList, err := os.ReadDir(scoopBucketsRoot)
 	if err != nil {
 		return apps, err
@@ -83,7 +83,7 @@ func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 		bucketName = budgetEntry.Name()                          // 子目录名就是桶的名称，如 extras
 		bucketDir := filepath.Join(scoopBucketsRoot, bucketName) // 如 E:\Scoop\buckets\extras
 
-		bucketItems, err := os.ReadDir(bucketDir) // 获取桶内的子目录和文件列表
+		bucketItems, err := os.ReadDir(bucketDir) // 获取桶内的子目录和文件列表。少数桶内的 bucket 目录是多层的
 		if err != nil {
 			continue // 出错不中断，继续处理下一个桶。简化一下没必要的错误处理
 		}
@@ -95,17 +95,17 @@ func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 				if bucketItemName == "bucket" { // 过滤掉无关的目录
 					dir := filepath.Join(bucketDir, bucketItemName) // 如 E:\Scoop\buckets\extras\bucket
 
-					// 使用 Walk() 是因为有少数桶的 bucket 子目录是多层目录。注意 path 是包含路径的完整文件名
+					// 使用 WalkDir() 是因为有少数桶的 bucket 子目录是多层目录。注意 path 是包含路径的完整文件名
 					filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-						if err == nil && !d.IsDir() { // 此处已是文件。filepath.Dir() 保证多层目录也有效
-							appendQulifiedApp(d.Name(), filepath.Dir(path))
+						if err == nil && !d.IsDir() {
+							appendProxiedApp(d.Name(), filepath.Dir(path))
 						}
 						return nil
 					})
 				}
 			} else {
 				// 此处已是文件。少数桶将 manifest 直接放在桶的目录下。此时，桶的路径就是 manifest 的路径
-				appendQulifiedApp(bucketItemName, bucketDir)
+				appendProxiedApp(bucketItemName, bucketDir)
 			}
 		}
 	}

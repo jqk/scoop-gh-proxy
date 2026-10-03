@@ -21,34 +21,36 @@ type ManifestEdit struct {
 	Replacement []byte
 }
 
-// locateManifest 读取 manifest 文件并只读定位待修改的 url。
-// 有待修改的 url 时设置 Status = IsGitHub，并把原始内容与编辑清单记录到 item，供后续在别处应用；
-// url 都已带代理前缀时设置 Status = ProxySet；没有 github 下载链接时设置 Status = NotGitHub
-func locateManifest(item *OutdatedApp, ghProxy string) (matched bool, err error) {
-	data, err := os.ReadFile(item.Manifest) // 读取 manifest 文件
+// analizeManifest 读取 manifest 文件并只读定位待修改的 url。
+// 有待修改的 url 时设置 Status = IsGitHub，并把原始内容与编辑清单记录到 app，供后续在别处应用；
+// url 都已带代理前缀时设置 Status = ProxySet；没有 github 下载链接时设置 Status = NotGitHub。
+// 返回 true 表示应该保存
+func analizeManifest(app *OutdatedApp, ghProxy string) (bool, error) {
+	data, err := os.ReadFile(app.Manifest) // 读取 manifest 文件
 	if err != nil {
-		item.Status = ManifestError
+		app.Status = ManifestError
 		return false, err
 	}
 
+	// edits 有元素，说明找到了应该设置代理的 url；proxied 说明已设置了代理。这两者不会同时成立
 	edits, proxied, err := locateManifestEdits(data, ghProxy)
 	if err != nil {
-		item.Status = ManifestError
+		app.Status = ManifestError
 		return false, err
 	}
 
 	if proxied {
-		item.Status = ProxySet // 重复执行 set 时的正常状态
+		app.Status = ProxySet // 重复执行 set 时的正常状态
 		return false, nil
 	}
-	if len(edits) > 0 {
-		item.Status = IsGitHub
-		item.OriginalManifest = data // 只记录定位结果，实际修改在 backupManifest 中进行
-		item.Edits = edits
+	if len(edits) > 0 { // 说明需要设置 gh 代理
+		app.Status = IsGitHub
+		app.OriginalManifest = data // 只记录定位结果，实际修改在 backupManifest 中进行
+		app.Edits = edits
 		return true, nil
 	}
 
-	item.Status = NotGitHub // 没有 github 下载链接
+	app.Status = NotGitHub // 没有 github 下载链接
 	return false, nil
 }
 
@@ -73,15 +75,16 @@ func locateManifestEdits(data []byte, ghProxy string) ([]ManifestEdit, bool, err
 		}
 
 		switch name {
-		case "url":
+		case "url": // url 就在 json 文件顶层
 			edits, proxied, err = scanURLValue(dec, ghProxy, edits)
-		case "architecture":
+		case "architecture": // 顶层出现 architecture，其下第二层，也就是 json 文件的第三层会有 url
 			var archProxied bool
 			edits, archProxied, err = scanArchitecture(dec, ghProxy, edits)
 			proxied = proxied || archProxied
 		default:
 			err = dec.SkipValue() // 其它成员与修改无关，整段跳过
 		}
+
 		if err != nil {
 			return nil, false, err
 		}
@@ -115,6 +118,8 @@ func scanArchitecture(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdi
 
 		var err error
 		var blockProxied bool
+
+		// archBlock 是 x64，arm64 之类的节点，其下有 url
 		edits, blockProxied, err = scanArchBlock(dec, ghProxy, edits)
 		proxied = proxied || blockProxied
 		if err != nil {
@@ -167,10 +172,10 @@ func readMemberName(dec *jsontext.Decoder) (string, error) {
 // proxied 表示其中存在已带代理前缀的 url
 func scanURLValue(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit) ([]ManifestEdit, bool, error) {
 	switch dec.PeekKind() {
-	case jsontext.KindString:
+	case jsontext.KindString: // url 是字符串，也就是只有一个下载地址
 		return scanURLElement(dec, ghProxy, edits)
 
-	case jsontext.KindBeginArray:
+	case jsontext.KindBeginArray: // url 是字符串数据，要下载多个软件包
 		dec.ReadToken() // 消耗 '['
 		proxied := false
 
@@ -211,12 +216,14 @@ func scanURLElement(dec *jsontext.Decoder, ghProxy string, edits []ManifestEdit)
 	if err != nil {
 		return nil, false, err
 	}
-	
+
 	newURL := string(url)
-	
+
 	if strings.HasPrefix(newURL, ghProxy) { // 已带代理前缀，无需修改
 		return edits, true, nil
 	}
+
+	// 即便做了修改，只要不保存(setProxiedManifest)，也不会改变已存在的 manifest
 	if !patchDownloadLink(&newURL, ghProxy) { // 非 github 前缀
 		return edits, false, nil
 	}
@@ -244,7 +251,8 @@ func applyManifestEdits(data []byte, edits []ManifestEdit) []byte {
 	return append(out, data[last:]...)
 }
 
-// patchDownloadLink 修改单个 url 字符串，返回是否实际修改
+// patchDownloadLink 修改单个 url 字符串，返回是否实际修改。
+// 即便修改了，只要不保存，也不会影响已存在的 manifest
 func patchDownloadLink(s *string, ghProxy string) bool {
 	if !strings.HasPrefix(*s, githubURLPrefix) {
 		return false

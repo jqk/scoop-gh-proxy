@@ -11,7 +11,7 @@ const (
 	ManifestError  OutdatedAppStatus = "Manifest error"         // manifest 文件存在但读取失败，终止执行
 	BackupExists   OutdatedAppStatus = "Manifest backup exists" // manifest 备份已存在，终止执行
 	BackupFailed   OutdatedAppStatus = "Manifest backup failed" // manifest 备份失败，终止执行
-	ProxySet       OutdatedAppStatus = "Proxy set"              // url 已带 gh_proxy 前缀，无需重复设置
+	ProxySet       OutdatedAppStatus = "Proxy set"              // url 已带 gh_proxy 前缀，无需重复设置，终止执行
 	RestoreSuccess OutdatedAppStatus = "Success"                // restore：还原成功
 	RestoreFailed  OutdatedAppStatus = "Failed"                 // restore：还原失败
 )
@@ -33,12 +33,12 @@ type OutdatedApp struct {
 }
 
 // fillBucketManifest 补全 OutdatedApp 的 manifest 及 manifestBackup
-func fillBucketManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
-	if app.Bucket = findBucket(cfg.RootPath, app.Name); app.Bucket == "" {
+func fillBucketManifest(rootPath string, app *OutdatedApp) bool {
+	if app.Bucket = findBucket(rootPath, app.Name); app.Bucket == "" {
 		app.Status = NoManifest
 		return false
 	}
-	if app.Manifest = findManifest(cfg.RootPath, app.Name, app.Bucket); app.Manifest == "" {
+	if app.Manifest = findManifest(rootPath, app.Name, app.Bucket); app.Manifest == "" {
 		app.Status = NoManifest
 		return false
 	}
