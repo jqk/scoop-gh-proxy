@@ -4,6 +4,7 @@ import (
 	"fmt"
 )
 
+// SetProxyForOutdatedApps 查找需要更新的软件，为匹配的软件添加代理
 func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, error) {
 	apps, err := getOutdatedApps(cfg.RootPath)
 	if err != nil {
