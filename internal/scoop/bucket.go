@@ -179,7 +179,8 @@ func findManifest(rootPath, appName, bucketName string) string {
 			return nil // 吞掉错误，继续查找。因为反正有错误的结果也是找不到文件
 		}
 
-		if d.Name() == manifestFileName {
+		// Windows 的文件名不区别大小写，直接用等号比较，就会错误地把大小写不同认为是不同的文件
+		if strings.EqualFold(d.Name(), manifestFileName) {
 			manifestPath = path
 			return fs.SkipAll // 找到了，结束查找
 		}
