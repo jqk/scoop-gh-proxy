@@ -64,32 +64,43 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 	}
 	info("Manifest to restore: %d", count)
 
+	if showStatus {
+		printRestoreTable(items)
+		return
+	}
+
+	// 无 Status 列的两列表格（restore dry-run 使用）
+	nameW, bucketW := len("App Name"), len("Bucket Name")
+	for _, it := range items {
+		nameW = max(nameW, len(it.Name))
+		bucketW = max(bucketW, len(it.Bucket))
+	}
+
+	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
+	fmt.Printf(rowFmt, "App Name", "Bucket Name")
+	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
+
+	for _, it := range items {
+		fmt.Printf(rowFmt, it.Name, it.Bucket)
+	}
+}
+
+// printRestoreTable 输出带 Status 列的三列明细表（restore 与 --update 的遗留清理共用）
+func printRestoreTable(items []scoop.OutdatedApp) {
 	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
 	for _, it := range items {
 		nameW = max(nameW, len(it.Name))
 		bucketW = max(bucketW, len(it.Bucket))
-		if showStatus {
-			statusW = max(statusW, len(string(it.Status)))
-		}
+		statusW = max(statusW, len(string(it.Status)))
 	}
 
-	if showStatus {
-		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
-		fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
-		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
+	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
+	fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
+	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
 
-		for _, it := range items {
-			c := pickColor(string(it.Status))
-			c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
-		}
-	} else {
-		rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
-		fmt.Printf(rowFmt, "App Name", "Bucket Name")
-		fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
-
-		for _, it := range items {
-			fmt.Printf(rowFmt, it.Name, it.Bucket)
-		}
+	for _, it := range items {
+		c := pickColor(string(it.Status))
+		c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
 	}
 }
 
@@ -140,12 +151,12 @@ func printSetTable(results []scoop.OutdatedApp) {
 }
 
 func pickColor(status string) *color.Color {
-	switch  status{
+	switch status {
 	case "Skipped":
 		return color.New(color.FgYellow)
 	case "Not github", "Proxy set":
 		return color.New(color.FgWhite)
-	case "Failed":
+	case "Failed", "Update failed":
 		return color.New(color.FgRed)
 	default:
 		return color.New(color.FgGreen)

@@ -14,6 +14,8 @@ const (
 	ProxySet       OutdatedAppStatus = "Proxy set"              // url 已带 gh_proxy 前缀，无需重复设置，终止执行
 	RestoreSuccess OutdatedAppStatus = "Success"                // restore：还原成功
 	RestoreFailed  OutdatedAppStatus = "Failed"                 // restore：还原失败
+	Updated        OutdatedAppStatus = "Updated"                // --update：scoop update <app> 成功
+	UpdateFailed   OutdatedAppStatus = "Update failed"          // --update：更新失败（输出有错误、超时或进程异常退出）
 )
 
 // OutdatedApp 对应 scoop status -l 中一行 app 记录，还附加有本程序使用的属性。
