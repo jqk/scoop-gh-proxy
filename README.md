@@ -331,6 +331,7 @@ Is github 组（proxy 保护罩）：
 
 - 透传：子进程 stdout/stderr 原样实时打印（保留颜色与进度条动画），stdin 接管，用户观感等同直接执行 scoop 命令；工具自身只在前后加少量说明行
 - 扫描：读取侧按行缓冲（\n 切分，兼容 \r），每行去 ANSI 后交给 `classifyUpdateLine` 纯函数判定。错误标记集中在一处定义（大小写不敏感子串匹配），扫描命中即判定该 app 失败：`unable to access`、`could not resolve host`、`failed to connect`、`download failed`、`timed out`、`would be overwritten by merge`、`your local changes`、`not a git repository`、`detected dubious ownership`
+- 进程异常退出（非零退出码）同样判定该 app 失败；未命中错误标记且正常退出才算更新成功
 - 检测到错误行时不提前杀进程：让 scoop 自己的收尾/重试逻辑走完（或超时兜底），结束后统一判定该 app 成败
 - 超时兜底：appUpdateTimeout = 10 分钟（可调。app 下载被杀不会续传，超时太短大文件永远更新不完），超时杀进程树，该 app 判定失败
 - 进程树终止：scoop.cmd 会派生 powershell 子进程，普通 Kill 会留下孤儿进程；用 Job Object（KILL_ON_JOB_CLOSE）绑定子进程，超时或终止时整树结束
@@ -350,10 +351,11 @@ Is github 组（proxy 保护罩）：
 | ---- | ---- |
 | `internal/scoop/tools.go` | 新增 runScoopStream：流式透传 + 逐行扫描。现有 runScoop 保持不动（scoop config / status -l 仍用） |
 | `internal/scoop/exec_kill.go`（新增） | Job Object 进程树终止（golang.org/x/sys/windows 转为直接依赖） |
-| `internal/scoop/update.go`（新增） | UpdateOutdatedApps 流程编排；classifyUpdateLine 纯函数 + 错误标记表；UpdateResult / AppUpdateResult 结果类型 |
+| `internal/scoop/update_test.go`（新增） | classifyUpdateLine 表驱动单测 |
+| `internal/scoop/update.go`（新增） | PrepareUpdate：遗留清理 + status 分组（UpdatePlan）；UpdatePlainApp / UpdateProxiedApp：逐个更新；BeginProxyPhase / EndProxyPhase：proxy 保护罩；classifyUpdateLine 纯函数 + 错误标记表 |
 | `internal/scoop/runner.go` | 抽取「定位 bucket + 分析 manifest」门控为 prepareAppManifest，批量 set 与 --update 共用；批量行为不变 |
 | 复用不改签名 | setProxiedManifest / restoreProxiedManifest / setScoopProxy / restoreScoopProxy / getOutdatedApps / findProxiedManifests |
-| `internal/cli/cli.go`（或新增 cli/update.go） | RunUpdate：os.Stdout 作为 progress writer 传入核心层；输出遗留还原警告、分组明细、逐 app 进度行、最终汇总；错误输出 + 退出码 |
+| `internal/cli/update.go`（新增） | RunUpdate：os.Stdout 作为 progress writer 传入核心层；输出遗留还原警告、分组明细、逐 app 进度行、最终汇总；错误输出 + 退出码。printRestoreTable 抽取自 cli.go 供遗留警告复用 |
 | `main.go` | --update 分发；更新 printUsage |
 | `README.md` 第七节、`AGENTS.md` | 实现完成后同步最终设计 |
 
