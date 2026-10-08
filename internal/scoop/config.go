@@ -88,28 +88,33 @@ func validateConfig(cfg *ScoopConfig) error {
 }
 
 // setScoopProxy set 命令的收尾：把当前 proxy 备份到 gh_scoop_proxy_backup，再清空 proxy，
-// 避免 scoop update 时与 gh_proxy 冲突
+// 避免 scoop update 时与 gh_proxy 冲突。成功后同步更新 cfg，保持内存值与 scoop config 一致，
+// 后续 restoreScoopProxy 才能依据内存值判断出"需要恢复"
 func setScoopProxy(cfg *ScoopConfig) error {
 	if cfg.Proxy != "" {
 		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
 			if _, err := runScoop("config", "gh_scoop_proxy_backup", cfg.Proxy); err != nil {
 				return err
 			}
+			cfg.GhScoopProxyBackup = cfg.Proxy
 		}
 		if _, err := runScoop("config", "rm", "proxy"); err != nil { // 清空
 			return err
 		}
+		cfg.Proxy = ""
 	}
 
 	return nil
 }
 
-// restoreScoopProxy restore 命令的收尾：把 gh_scoop_proxy_backup 中备份的值恢复到 proxy
+// restoreScoopProxy restore 命令的收尾：把 gh_scoop_proxy_backup 中备份的值恢复到 proxy。
+// 成功后同步更新 cfg.Proxy，保证重复调用安全（已恢复时条件不成立，直接跳过）
 func restoreScoopProxy(cfg *ScoopConfig) error {
 	if cfg.GhScoopProxyBackup != "" && cfg.Proxy != cfg.GhScoopProxyBackup {
 		if _, err := runScoop("config", "proxy", cfg.GhScoopProxyBackup); err != nil {
 			return err
 		}
+		cfg.Proxy = cfg.GhScoopProxyBackup
 	}
 	return nil
 }

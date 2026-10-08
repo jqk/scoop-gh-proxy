@@ -8,7 +8,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// update（自动化更新：清理遗留 → 分组 → 逐个 scoop update <app> → 汇总）
+// update（自动化更新：清理遗留 → 分组 → 保护罩内逐个 scoop update <app> → 恢复 proxy → 汇总）
 // ---------------------------------------------------------------------------
 
 func RunUpdate() {
@@ -18,12 +18,11 @@ func RunUpdate() {
 		os.Exit(1)
 	}
 
-	newCfg, plan, err := scoop.PrepareUpdate(&cfg)
+	plan, err := scoop.PrepareUpdate(&cfg)
 	if err != nil {
 		error_("%s", err)
 		os.Exit(1)
 	}
-	cfg = newCfg
 
 	// 遗留还原警告
 	if len(plan.Leftovers) > 0 {
@@ -43,15 +42,8 @@ func RunUpdate() {
 	total := len(plan.All)
 	done := 0
 
-	// Not github 组：直接逐个更新
-	for _, app := range plan.NotGithub {
-		done++
-		info("[%d/%d] %s", done, total, app.Name)
-		scoop.UpdatePlainApp(app, os.Stdout)
-		printAppOutcome(app)
-	}
-
-	// Is github / Proxy set 组：proxy 保护罩内逐个更新
+	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
+	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），完成之后恢复
 	if len(plan.Proxied) > 0 {
 		if err := scoop.BeginProxyPhase(&cfg); err != nil {
 			error_("备份并清空 scoop config proxy 失败: %s", err)
@@ -99,20 +91,18 @@ func printAppOutcome(app *scoop.OutdatedApp) {
 	}
 }
 
-// printUpdateSummary 输出更新汇总：计数 + 更新结果明细表
+// printUpdateSummary 输出更新汇总：计数 + 更新结果明细表（仅覆盖本次更新的 Proxied 组）
 func printUpdateSummary(plan *scoop.UpdatePlan) {
 	updated, failed := 0, 0
-	results := make([]scoop.OutdatedApp, 0, len(plan.NotGithub)+len(plan.Proxied))
-	for _, group := range [][]*scoop.OutdatedApp{plan.NotGithub, plan.Proxied} {
-		for _, app := range group {
-			switch app.Status {
-			case scoop.Updated:
-				updated++
-			case scoop.UpdateFailed, scoop.RestoreFailed:
-				failed++
-			}
-			results = append(results, *app)
+	results := make([]scoop.OutdatedApp, 0, len(plan.Proxied))
+	for _, app := range plan.Proxied {
+		switch app.Status {
+		case scoop.Updated:
+			updated++
+		case scoop.UpdateFailed, scoop.RestoreFailed:
+			failed++
 		}
+		results = append(results, *app)
 	}
 	skipped := len(plan.Skipped)
 

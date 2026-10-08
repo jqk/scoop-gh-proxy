@@ -19,11 +19,11 @@ go build -o scoop-gh-proxy.exe .
 - `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表、printRestoreTable）
 - `internal/cli/update.go` — RunUpdate：--update 的输出（遗留警告、分组明细、进度行、汇总、退出码）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
-- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / RestoreScoopProxy）
+- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / restoreScoopProxy，成功后同步更新 ScoopConfig 内存值）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
-- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdatePlainApp / UpdateProxiedApp 逐个更新、BeginProxyPhase / EndProxyPhase proxy 保护罩、classifyUpdateLine 与错误标记表
+- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdateProxiedApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、BeginProxyPhase / EndProxyPhase proxy 保护罩、classifyUpdateLine 与错误标记表
 - `internal/scoop/exec_kill.go` — Windows Job Object 进程树终止（x/sys/windows）
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
@@ -70,14 +70,14 @@ go build -o scoop-gh-proxy.exe .
 - manifest 中未被修改的字节逐字节保留：applyManifestEdits 只做命中区间的替换
 - --update 单个 app 失败不中断：错误输出命中标记、超时或非零退出都只记录状态，继续下一个，直到全部执行完
 - --update 的 proxy 保护罩成对出现：BeginProxyPhase 之后任何返回路径（含 panic）都必须 EndProxyPhase，cli 层用 defer 兜底
-- --update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy，保证从干净状态开始
+- --update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy，保证从干净状态开始（restoreScoopProxy 同步内存 cfg，无需二次 GetScoopConfig）
 - --update 的 Is github app 无论更新成败都还原 manifest；还原失败优先展示为 Failed（manifest 仍处于已修改状态，可再执行 --restore）
 
 ## 命令行为
 - `--set` — 定位 + 备份 + 修改 [app].json，输出 "Manifest to Set: N" + 明细表
 - `--restore` — 还原 backup，输出 "Manifest to restore: N" + 明细表（Name + Bucket）
 - `--status` — dry-run，先输出 restore 明细，再输出 set 明细，不修改任何文件
-- `--update` — 不执行 scoop update（不更新 scoop 自身与桶）。流程：清理遗留 → status -l 分组（Skipped 显示跳过 / Not github 直接更新 / Is github 与 Proxy set 进保护罩）→ 逐个 scoop update <app>（runScoopStream 流式透传，appUpdateTimeout=10 分钟超时）→ 汇总。单 app 失败不影响退出码；退出码 1 = 配置错误或 status -l 无法执行/解析失败
+- `--update` — 不执行 scoop update（不更新 scoop 自身与桶）。流程：清理遗留 → status -l 分组（三组：Skipped / Not github 保留待用不更新；只更新 Is github 与 Proxy set 组）→ setScoopProxy 清空 proxy（备份到 gh_scoop_proxy_backup）→ 逐个 scoop update <app>（runScoopStream 流式透传，appUpdateTimeout=10 分钟超时）→ restoreScoopProxy 恢复 proxy → 汇总。单 app 失败不影响退出码；退出码 1 = 配置错误或 status -l 无法执行/解析失败
 - N 为 0 时不输出明细表
 - dryRun 标志只存在于命令流程层（SetProxyForOutdatedApps / RestoreOutdatedAppManifests），manifest 层只做只读定位
 
