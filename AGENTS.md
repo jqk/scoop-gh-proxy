@@ -22,7 +22,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunHelp / RunVersion），返回退出码；--update 的 proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
 - `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
-- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / restoreScoopProxy，成功后同步更新 ScoopConfig 内存值）
+- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（SetScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，暂存供下载进度逻辑后续判断）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
@@ -32,7 +32,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
 - `internal/scoop/update_test.go` — classifyUpdateLine 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找
-- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描）
+- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描；裸 \r 补为 \r\n，下载进度各占新行）
 
 ## 关键约定
 - Windows only，路径用 `filepath`

@@ -11,3 +11,5 @@
 
 # 3. Z-Code
 .zcode/
+
+dist/

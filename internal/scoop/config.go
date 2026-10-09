@@ -12,6 +12,7 @@ type ScoopConfig struct {
 	Proxy              string // scoop 使用的属性，定义 scoop update 命令使用的 http 代理。本程序的 set 命令会清空此值，restore 命令会恢复此值
 	GhScoopProxyBackup string // 本程序专用属性，备份 Proxy 值。restore 命令会使用此值恢复 Proxy
 	GhProxy            string // 本程序专用属性，定义面向 github 下载链接的数据代理
+	Aria2Enabled       bool   // scoop 使用的属性：是否启用 aria2 下载（scoop 默认 false）。当前仅暂存，供下载进度输出相关逻辑后续判断
 }
 
 // GetScoopConfig 执行 scoop config 命令，获取配置值。
@@ -35,6 +36,9 @@ func GetScoopConfig() (ScoopConfig, error) {
 				cfg.GhScoopProxyBackup = val
 			case "gh_proxy":
 				cfg.GhProxy = val
+			case "aria2-enabled":
+				// scoop config 的布尔值输出形如 True / False（PowerShell），大小写不敏感比较
+				cfg.Aria2Enabled = strings.EqualFold(val, "true")
 			}
 		}
 	}
