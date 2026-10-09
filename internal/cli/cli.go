@@ -7,7 +7,12 @@ import (
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
-const version = "1.0.0"
+// Version 版本号，构建时由 build.bat 通过 -ldflags -X 注入
+// （规则：最近 tag 的 patch 号 + 其后提交次数）；直接 go build 时为 dev
+var Version = "dev"
+
+// BuildTime 构建时间（2006-01-02_15:04:05），构建时注入；为空表示非 build.bat 构建
+var BuildTime = ""
 
 // ---------------------------------------------------------------------------
 // set
@@ -139,8 +144,12 @@ func RunHelp() int {
 	return 0
 }
 
-// RunVersion --version / -v：输出版本号
+// RunVersion --version / -v：输出版本号（build.bat 构建时附带构建时间）
 func RunVersion() int {
-	fmt.Println(version)
+	if BuildTime != "" {
+		fmt.Printf("%s (built %s)\n", Version, BuildTime)
+	} else {
+		fmt.Println(Version)
+	}
 	return 0
 }
