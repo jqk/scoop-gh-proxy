@@ -11,13 +11,13 @@ go build -o scoop-gh-proxy.exe .
 
 ## 分层
 - `internal/scoop` — 核心库：只接收参数、返回数据与 error，不打印、不 os.Exit。将来 GUI 与 internal/cli 平级，共用核心
-- `internal/cli` — 命令行交互层：彩色输出、明细表、退出码只在这里
+- `internal/cli` — 命令行交互层：彩色输出、明细表在这里；Run* 命令入口返回退出码、不直接 os.Exit，由 main 统一退出
 - 依赖方向单向：main → internal/cli → internal/scoop，反向禁止
 
 ## 文件结构
-- `main.go` — 入口，参数分发（--set / --restore / --status / --update / --help / --version）
-- `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表、printRestoreTable）
-- `internal/cli/update.go` — RunUpdate：--update 的输出（遗留警告、分组明细、进度行、汇总、退出码）；proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
+- `main.go` — 入口，参数分发（--set / --restore / --status / --update / --help / --version），按 cli.Run* 返回的退出码统一 os.Exit
+- `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunHelp / RunVersion），返回退出码；--update 的 proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
+- `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / restoreScoopProxy，成功后同步更新 ScoopConfig 内存值）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
@@ -69,7 +69,7 @@ go build -o scoop-gh-proxy.exe .
 - proxy 设置与恢复条件对称：set 仅在 Proxy 非空时备份并清空；restore 仅在 GhScoopProxyBackup 非空且与当前 Proxy 不同时恢复
 - manifest 中未被修改的字节逐字节保留：applyManifestEdits 只做命中区间的替换
 - --update 单个 app 失败不中断：错误输出命中标记、超时或非零退出都只记录状态，继续下一个，直到全部执行完
-- --update 的 proxy 保护罩：PrepareUpdate 成功后 cli 层立即 defer RestoreScoopProxy，函数任何返回路径（含 panic）退出时统一恢复；RestoreScoopProxy 幂等（无备份或已恢复时为 no-op），故单调用点即可，无需防重标志
+- --update 的 proxy 保护罩：PrepareUpdate 成功后 cli 层立即 defer RestoreScoopProxy，函数任何返回路径（含 panic）退出时统一恢复；RestoreScoopProxy 幂等（无备份或已恢复时为 no-op），故单调用点即可，无需防重标志。RunUpdate 以返回退出码代替 os.Exit，defer 因此也覆盖 SetScoopProxy 失败路径
 - --update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy，保证从干净状态开始（restoreScoopProxy 同步内存 cfg，无需二次 GetScoopConfig）
 - --update 的 Is github app 无论更新成败都还原 manifest；还原失败优先展示为 Failed（manifest 仍处于已修改状态，可再执行 --restore）
 
@@ -77,7 +77,7 @@ go build -o scoop-gh-proxy.exe .
 - `--set` — 定位 + 备份 + 修改 [app].json，输出 "Manifest to Set: N" + 明细表
 - `--restore` — 还原 backup，输出 "Manifest to restore: N" + 明细表（Name + Bucket）
 - `--status` — dry-run，先输出 restore 明细，再输出 set 明细，不修改任何文件
-- `--update` — 不执行 scoop update（不更新 scoop 自身与桶）。流程：清理遗留 → status -l 分组（三组：Skipped / Not github 保留待用不更新；只更新 Is github 与 Proxy set 组）→ setScoopProxy 清空 proxy（备份到 gh_scoop_proxy_backup）→ 逐个 scoop update <app>（runScoopStream 流式透传，appUpdateTimeout=10 分钟超时）→ restoreScoopProxy 恢复 proxy → 汇总。单 app 失败不影响退出码；退出码 1 = 配置错误或 status -l 无法执行/解析失败
+- `--update` — 不执行 scoop update（不更新 scoop 自身与桶）。流程：清理遗留 → status -l 分组（三组：Skipped / Not github 保留待用不更新；只更新 Is github 与 Proxy set 组）→ setScoopProxy 清空 proxy（备份到 gh_scoop_proxy_backup）→ 逐个 scoop update <app>（runScoopStream 流式透传，appUpdateTimeout=10 分钟超时）→ restoreScoopProxy 恢复 proxy → 汇总。单 app 失败不影响退出码；退出码 1 = 配置错误、status -l 无法执行/解析失败或 proxy 清空失败
 - N 为 0 时不输出明细表
 - dryRun 标志只存在于命令流程层（SetProxyForOutdatedApps / RestoreOutdatedAppManifests），manifest 层只做只读定位
 

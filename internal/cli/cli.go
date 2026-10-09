@@ -3,22 +3,22 @@ package cli
 import (
 	"fmt"
 	"os"
-	"strings"
-
-	"github.com/fatih/color"
 
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
+
+const version = "1.0.0"
 
 // ---------------------------------------------------------------------------
 // set
 // ---------------------------------------------------------------------------
 
-func RunSet(dryRun bool) {
+// RunSet --set：定位 + 备份 + 修改 [app].json。返回退出码：1 = 配置错误
+func RunSet(dryRun bool) int {
 	cfg, err := scoop.GetScoopConfig()
 	if err != nil {
 		error_("%s", err)
-		os.Exit(1)
+		return 1
 	}
 
 	apps, err := scoop.SetProxyForOutdatedApps(&cfg, dryRun)
@@ -26,27 +26,19 @@ func RunSet(dryRun bool) {
 		error_("%s", err)
 	}
 	printSetSummary(apps)
-}
-
-func printSetSummary(result []scoop.OutdatedApp) {
-	count := len(result)
-	if count == 0 {
-		info("Manifest to Set: 0")
-		return
-	}
-	info("Manifest to Set: %d", count)
-	printSetTable(result)
+	return 0
 }
 
 // ---------------------------------------------------------------------------
 // restore
 // ---------------------------------------------------------------------------
 
-func RunRestore(dryRun bool) {
+// RunRestore --restore：还原 backup。返回退出码：1 = 配置错误
+func RunRestore(dryRun bool) int {
 	cfg, err := scoop.GetScoopConfig()
 	if err != nil {
 		error_("%s", err)
-		os.Exit(1)
+		return 1
 	}
 
 	items, err := scoop.RestoreOutdatedAppManifests(&cfg, dryRun)
@@ -54,115 +46,101 @@ func RunRestore(dryRun bool) {
 		error_("%s", err)
 	}
 	printRestoreSummary(items, !dryRun)
-}
-
-func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
-	count := len(items)
-	if count == 0 {
-		info("Manifest to restore: 0")
-		return
-	}
-	info("Manifest to restore: %d", count)
-
-	if showStatus {
-		printRestoreTable(items)
-		return
-	}
-
-	// 无 Status 列的两列表格（restore dry-run 使用）
-	nameW, bucketW := len("App Name"), len("Bucket Name")
-	for _, it := range items {
-		nameW = max(nameW, len(it.Name))
-		bucketW = max(bucketW, len(it.Bucket))
-	}
-
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
-	fmt.Printf(rowFmt, "App Name", "Bucket Name")
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
-
-	for _, it := range items {
-		fmt.Printf(rowFmt, it.Name, it.Bucket)
-	}
-}
-
-// printRestoreTable 输出带 Status 列的三列明细表（restore 与 --update 的遗留清理共用）
-func printRestoreTable(items []scoop.OutdatedApp) {
-	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
-	for _, it := range items {
-		nameW = max(nameW, len(it.Name))
-		bucketW = max(bucketW, len(it.Bucket))
-		statusW = max(statusW, len(string(it.Status)))
-	}
-
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
-	fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
-
-	for _, it := range items {
-		c := pickColor(string(it.Status))
-		c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
-	}
+	return 0
 }
 
 // ---------------------------------------------------------------------------
-// status（dry-run：先 reset 明细，后 set 明细，不修改任何文件）
+// status（dry-run：先 restore 明细，后 set 明细，不修改任何文件）
 // ---------------------------------------------------------------------------
 
-func RunStatus() {
-	RunRestore(true)
+// RunStatus --status：依次以 dry-run 执行 restore 与 set。返回退出码：1 = 配置错误
+func RunStatus() int {
+	if code := RunRestore(true); code != 0 {
+		return code
+	}
 	fmt.Println() // 分隔 restore 明细与 set 明细
-	RunSet(true)
+	return RunSet(true)
 }
 
 // ---------------------------------------------------------------------------
-// 共享：set 结果表
+// update（自动化更新：清理遗留 → 分组 → 保护罩内逐个 scoop update <app> → 恢复 proxy → 汇总）
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []scoop.OutdatedApp) {
-	const (
-		hdrName   = "App Name"
-		hdrVer    = "Installed Version"
-		hdrLate   = "Latest Version"
-		hdrBucket = "Bucket Name"
-		hdrStatus = "Status"
-	)
-
-	nameW, verW, lateW, bucketW, statusW := len(hdrName), len(hdrVer), len(hdrLate), len(hdrBucket), len(hdrStatus)
-	for _, r := range results {
-		nameW = max(nameW, len(r.Name))
-		verW = max(verW, len(r.Installed))
-		lateW = max(lateW, len(r.Latest))
-		bucketW = max(bucketW, len(r.Bucket))
-		statusW = max(statusW, len(r.Status))
+// RunUpdate --update。返回退出码：1 = 配置错误、status -l 失败或 proxy 清空失败
+func RunUpdate() int {
+	cfg, err := scoop.GetScoopConfig()
+	if err != nil {
+		error_("%s", err)
+		return 1
 	}
 
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, bucketW, statusW)
-	fmt.Printf(rowFmt, hdrName, hdrVer, hdrLate, hdrBucket, hdrStatus)
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(verW), dashRun(lateW), dashRun(bucketW), dashRun(statusW))
+	plan, err := scoop.PrepareUpdate(&cfg)
+	if err != nil {
+		error_("%s", err)
+		return 1
+	}
 
-	for _, r := range results {
-		status := r.Status
-		if status == "" {
-			status = "Not github"
+	// 任何返回路径（含 panic）都在函数退出时恢复 proxy；
+	// RestoreScoopProxy 幂等，无备份或已恢复时为 no-op
+	defer func() {
+		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
+			error_("恢复 scoop config proxy 失败: %s", err)
 		}
-		c := pickColor(string(status))
-		c.Fprintf(os.Stdout, rowFmt, r.Name, r.Installed, r.Latest, r.Bucket, status)
+	}()
+
+	// 遗留还原警告
+	if len(plan.Leftovers) > 0 {
+		warning("发现上次运行遗留的备份，已自动还原: %d", len(plan.Leftovers))
+		printRestoreTable(plan.Leftovers)
+		fmt.Println()
 	}
+
+	// 分组明细：status -l 解析出的全部 app 及其归类
+	info("Apps to Update: %d", len(plan.All))
+	if len(plan.All) == 0 {
+		return 0
+	}
+	printSetTable(plan.All)
+	fmt.Println()
+
+	total := len(plan.All)
+	done := 0
+
+	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
+	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），退出时由 defer 恢复
+	if len(plan.Proxied) > 0 {
+		if err := scoop.SetScoopProxy(&cfg); err != nil {
+			error_("备份并清空 scoop config proxy 失败: %s", err)
+			return 1
+		}
+
+		for _, app := range plan.Proxied {
+			if app.Status == scoop.ProxySet {
+				warning("%s: manifest 已带 gh_proxy 前缀且无备份，更新后保持原状", app.Name)
+			}
+			done++
+			info("[%d/%d] %s", done, total, app.Name)
+			scoop.UpdateProxiedApp(app, os.Stdout)
+			printAppOutcome(app)
+		}
+	}
+
+	printUpdateSummary(&plan)
+	return 0
 }
 
-func pickColor(status string) *color.Color {
-	switch status {
-	case "Skipped":
-		return color.New(color.FgYellow)
-	case "Not github", "Proxy set":
-		return color.New(color.FgWhite)
-	case "Failed", "Update failed":
-		return color.New(color.FgRed)
-	default:
-		return color.New(color.FgGreen)
-	}
+// ---------------------------------------------------------------------------
+// help / version
+// ---------------------------------------------------------------------------
+
+// RunHelp --help / -h：输出用法
+func RunHelp() int {
+	printUsage()
+	return 0
 }
 
-func dashRun(n int) string {
-	return strings.Repeat("-", n)
+// RunVersion --version / -v：输出版本号
+func RunVersion() int {
+	fmt.Println(version)
+	return 0
 }
