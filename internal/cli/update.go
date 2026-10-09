@@ -45,7 +45,7 @@ func RunUpdate() {
 	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
 	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），完成之后恢复
 	if len(plan.Proxied) > 0 {
-		if err := scoop.BeginProxyPhase(&cfg); err != nil {
+		if err := scoop.SetScoopProxy(&cfg); err != nil {
 			error_("备份并清空 scoop config proxy 失败: %s", err)
 			os.Exit(1)
 		}
@@ -54,7 +54,7 @@ func RunUpdate() {
 		defer func() {
 			if proxyOn {
 				proxyOn = false
-				if err := scoop.EndProxyPhase(&cfg); err != nil {
+				if err := scoop.RestoreScoopProxy(&cfg); err != nil {
 					error_("恢复 scoop config proxy 失败: %s", err)
 				}
 			}
@@ -71,7 +71,7 @@ func RunUpdate() {
 		}
 
 		proxyOn = false
-		if err := scoop.EndProxyPhase(&cfg); err != nil {
+		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
 			error_("恢复 scoop config proxy 失败: %s", err)
 		}
 	}

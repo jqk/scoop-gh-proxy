@@ -43,7 +43,7 @@ func classifyUpdateLine(line string) bool {
 // UpdatePlan --update 的准备结果：遗留清理 + status 分组。
 // Skipped / NotGithub / Proxied 是 All 中元素的分组视图（同一份记录的指针）
 type UpdatePlan struct {
-	Leftovers []OutdatedApp  // 开工前自动还原的遗留备份（Status 为 Success / Failed）
+	Leftovers []OutdatedApp  // 开工前自动还原的遗留备份（Status 为 Success / Failed）。这是因为再次执行 --update 时，gh_proxy 可能不同
 	All       []OutdatedApp  // scoop status -l 的全部行（按原顺序），Status 为分组结果
 	Skipped   []*OutdatedApp // 不处理：Skipped、Manifest not found、Manifest error 等（保留待用）
 	NotGithub []*OutdatedApp // 无待修改 URL，可直接更新（保留待用，当前不更新）
@@ -98,7 +98,7 @@ func cleanupLeftovers(cfg *ScoopConfig) ([]OutdatedApp, error) {
 		_ = restoreProxiedManifest(&apps[i]) // 失败已记录在 apps[i].Status
 	}
 
-	if err := restoreScoopProxy(cfg); err != nil {
+	if err := RestoreScoopProxy(cfg); err != nil {
 		return apps, fmt.Errorf("恢复 scoop config proxy 失败: %v", err)
 	}
 
@@ -113,6 +113,9 @@ func cleanupLeftovers(cfg *ScoopConfig) ([]OutdatedApp, error) {
 // 结果记录在 app.Status（Updated / Update failed）。
 // 保留待用：当前 --update 只更新 Proxied 组，本函数暂无调用方
 func UpdatePlainApp(app *OutdatedApp, w io.Writer) {
+	if app.Status != NotGitHub {
+		return
+	}
 	errLines, timedOut, runErr := runScoopStream(w, appUpdateTimeout, "update", app.Name)
 	app.Status = updateVerdict(errLines, timedOut, runErr)
 }
@@ -154,21 +157,4 @@ func updateVerdict(errLines []string, timedOut bool, runErr error) OutdatedAppSt
 		return UpdateFailed
 	}
 	return Updated
-}
-
-// ---------------------------------------------------------------------------
-// proxy 保护罩
-// ---------------------------------------------------------------------------
-
-// BeginProxyPhase 进入 proxy 保护罩：把当前 proxy 备份到 gh_scoop_proxy_backup 并清空 proxy，
-// 避免 scoop update 走系统代理与 manifest 中带 gh_proxy 前缀的地址冲突。
-// 在所有待更新 app 执行 scoop update 之前调用
-func BeginProxyPhase(cfg *ScoopConfig) error {
-	return setScoopProxy(cfg)
-}
-
-// EndProxyPhase 退出 proxy 保护罩：用 gh_scoop_proxy_backup 中备份的值恢复 proxy。
-// 在所有待更新 app 执行完 scoop update 之后调用；输出层须保证任何返回路径都调用本函数
-func EndProxyPhase(cfg *ScoopConfig) error {
-	return restoreScoopProxy(cfg)
 }

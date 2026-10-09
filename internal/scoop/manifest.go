@@ -21,6 +21,21 @@ type ManifestEdit struct {
 	Replacement []byte
 }
 
+// prepareAppManifest 定位 app 的 manifest 并分析其中的 GitHub URL。
+// 返回 true 表示存在待修改的 GitHub URL（Status 为 IsGitHub），可继续执行代理设置；
+// 其余情况返回 false，具体状态记录在 app.Status。--set 与 --update 共用
+func prepareAppManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
+	if app.Status != Unknown {
+		return false // 只处理刚刚初始化，没有被处理过的
+	}
+	if !fillBucketManifest(cfg.RootPath, app) {
+		return false // 找不到对应的 bucket 或 manifest 文件，无法继续处理
+	}
+	// 分析失败与“无待修改 url（含已设置代理）”都记录在 app.Status
+	matched, _ := analyzeManifest(app, cfg.GhProxy)
+	return matched
+}
+
 // analyzeManifest 读取 manifest 文件并只读定位待修改的 url。
 // 有待修改的 url 时设置 Status = IsGitHub，并把原始内容与编辑清单记录到 app，供后续在别处应用；
 // url 都已带代理前缀时设置 Status = ProxySet；没有 github 下载链接时设置 Status = NotGitHub。
