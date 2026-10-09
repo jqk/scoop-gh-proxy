@@ -32,7 +32,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
 - `internal/scoop/update_test.go` — classifyUpdateLine 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找
-- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描；裸 \r 补为 \r\n，下载进度各占新行）
+- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描；显示侧只输出有内容的行：分隔符折叠（\r+ 及其后至多一个 \n）、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留，对齐真实终端观感；扫描判定侧吃原始行不受影响）
 
 ## 关键约定
 - Windows only，路径用 `filepath`

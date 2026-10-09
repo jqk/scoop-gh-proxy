@@ -22,6 +22,8 @@ func TestClassifyUpdateLine(t *testing.T) {
 		{"本地文件已改动", "error: your local changes would be lost", true},
 		{"目录不是 git 仓库", "fatal: not a git repository (or any of the parent directories): .git", true},
 		{"目录属主可疑", "fatal: detected dubious ownership in repository at 'E:/Scoop/buckets/extras'", true},
+		{"管理员权限不足", "Running pre_uninstall script... ERROR clash-verge-rev requires admin rights to update", true},
+		{"PowerShell 异常", "Exception calling \"DownloadFile\" with \"2\" argument(s): \"The remote server returned an error: (404) Not Found.\"", true},
 	}
 
 	for _, tt := range tests {

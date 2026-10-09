@@ -13,6 +13,8 @@ import (
 // updateErrorMarkers scoop update 输出中判定更新失败的错误标记（大小写不敏感子串）。
 // 取自真实的 scoop / git 报错输出，集中定义便于按实际输出增补
 var updateErrorMarkers = []string{
+	"error",                         // scoop/PowerShell：错误行前缀（如 "ERROR xxx requires admin rights to update"）；scoop 出错时退出码常为 0，只能靠输出判定
+	"exception",                     // PowerShell：未捕获异常（如 WebClient DownloadFile 抛出）
 	"unable to access",              // git：无法访问远端
 	"could not resolve host",        // git：域名解析失败
 	"failed to connect",             // 连接失败

@@ -38,7 +38,7 @@ func runScoop(args ...string) (string, error) {
 const appUpdateTimeout = 10 * time.Minute
 
 // runScoopStream 流式执行 scoop 子命令，供长时间运行的 scoop update 使用：
-//   - 子进程 stdout/stderr 实时写入 w（保留颜色；裸 \r 补为 \r\n，\r 原地刷新的下载进度各占新行），stdin 接管自 os.Stdin
+//   - 子进程 stdout/stderr 实时写入 w（保留颜色；显示侧只输出有内容的行：分隔符折叠、空行与纯空白行丢弃、行尾空白裁剪，对齐真实终端观感），stdin 接管自 os.Stdin
 //   - 读取侧按行缓冲（\n、\r 切分），每行去 ANSI 后经 classifyUpdateLine 判定，命中的行收集返回
 //   - 超过 timeout 未结束时，通过 Job Object 终止整棵进程树
 //
@@ -114,14 +114,18 @@ func runScoopStream(w io.Writer, timeout time.Duration, args ...string) (errLine
 
 // streamPipe 把 r 的字节实时写入 w（经 mu 加锁，供两个管道协程共用），
 // 并把完整行（\n、\r 切分）去 ANSI 后回调 onLine；r 读完后处理剩余的不完整行。
-// 写入前把裸 \r 补全为 \r\n（已有的 \r\n 原样保留）：scoop/aria2 的下载进度用 \r
-// 原地刷新，原样透传会续写在上一次输出的行尾，补成换行后每条进度都从新行开始
+// 显示侧只输出有内容的行，对齐 scoop 在真实终端中直接运行的观感——管道输出中的
+// 空行、纯空白行（aria2 非终端模式的填充）、行首 \r（进度行前置回车）都是伪影：
+//   - 行分隔符折叠：连续 \r 及其后至多一个 \n 归一为单个换行（\r\r\n 重复行尾常见）
+//   - 空行与纯空白行不显示；行尾空白裁剪；行首缩进保留
+// 扫描判定侧（onLine）吃原始行，不受显示过滤影响
 func streamPipe(w io.Writer, mu *sync.Mutex, r io.Reader, onLine func(string)) error {
 	const chunkSize = 4096
-	crlf := []byte{'\r', '\n'}
 	tmp := make([]byte, chunkSize)
-	var pending []byte // 尚未成行的剩余字节
-	crPending := false  // 上一块以 \r 结尾：写成 \r 还是 \r\n 取决于下一块的首字节
+	var pending []byte // 尚未成行的剩余字节（扫描侧）
+
+	// 显示侧逐行过滤状态，跨块保持
+	inSep, held, lineHasContent := false, 0, false
 
 	write := func(p []byte) {
 		if w == nil {
@@ -134,48 +138,48 @@ func streamPipe(w io.Writer, mu *sync.Mutex, r io.Reader, onLine func(string)) e
 	emit := func(line []byte) {
 		onLine(stripAnsi(string(line)))
 	}
-	// 写出悬挂的块尾 \r：下一字节是 \n 则配成 \r\n，否则补成 \r\n
-	flushCR := func(next byte, ok bool) {
-		if !crPending {
-			return
-		}
-		crPending = false
-		if ok && next == '\n' {
-			write([]byte{'\r'}) // 下一块自带的 \n 随后写出，合成 \r\n
-		} else {
-			write(crlf)
-		}
-	}
 
 	for {
 		n, readErr := r.Read(tmp)
 		if n > 0 {
 			chunk := tmp[:n]
 
-			// 透传（保留颜色），仅把裸 \r 补成 \r\n；块尾 \r 悬挂到下一块再定
-			flushCR(chunk[0], true)
-			rest := chunk
-			for len(rest) > 0 {
-				i := bytes.IndexByte(rest, '\r')
-				if i < 0 {
-					write(rest)
-					break
-				}
-				if i > 0 {
-					write(rest[:i])
-				}
-				if i+1 == len(rest) {
-					crPending = true
-					break
-				}
-				if rest[i+1] == '\n' {
-					write(rest[i : i+2])
-					rest = rest[i+2:]
-				} else {
-					write(crlf)
-					rest = rest[i+1:]
+			norm := make([]byte, 0, n)
+			flushWS := func() { // 行内空白缓冲：内容到来时先冲掉（保留缩进），行结束时丢弃
+				for ; held > 0; held-- {
+					norm = append(norm, ' ')
 				}
 			}
+			for _, b := range chunk {
+				switch {
+				case b == '\r':
+					if !inSep { // 分隔符序列开始：有内容才换行，空行/纯空白行不产生换行
+						inSep = true
+						if lineHasContent {
+							norm = append(norm, '\r', '\n')
+						}
+						held, lineHasContent = 0, false
+					}
+				case b == '\n':
+					if inSep {
+						// 分隔符序列的收尾 \n，已计入写出的换行
+					} else {
+						if lineHasContent {
+							norm = append(norm, '\n')
+						}
+						held, lineHasContent = 0, false
+					}
+				case b == ' ' || b == '\t':
+					inSep = false
+					held++
+				default:
+					inSep = false
+					flushWS()
+					norm = append(norm, b)
+					lineHasContent = true
+				}
+			}
+			write(norm)
 
 			pending = append(pending, chunk...)
 			for {
@@ -192,7 +196,6 @@ func streamPipe(w io.Writer, mu *sync.Mutex, r io.Reader, onLine func(string)) e
 			}
 		}
 		if readErr != nil {
-			flushCR(0, false) // 悬挂的块尾 \r 按 \r\n 收尾
 			if len(pending) > 0 {
 				emit(pending) // 无行尾的最后一行
 			}

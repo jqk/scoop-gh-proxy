@@ -22,18 +22,26 @@ func (r *byteReader) Read(p []byte) (int, error) {
 	return 1, nil
 }
 
-func TestStreamPipeNormalizeCarriageReturn(t *testing.T) {
+func TestStreamPipeDisplayNormalization(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
 		want string
 	}{
-		{"裸 CR 补成 CRLF", "a\rb", "a\r\nb"},
-		{"已有 CRLF 原样保留", "a\r\nb", "a\r\nb"},
-		{"纯 LF 不受影响", "a\nb", "a\nb"},
+		{"裸 CR 结束有内容的行", "a\rb", "a\r\nb"},
+		{"已有 CRLF 保留", "a\r\nb", "a\r\nb"},
+		{"纯 LF 保留", "a\nb", "a\nb"},
 		{"无换行", "abc", "abc"},
-		{"行首 CR 进度行", "\rDownload: [50%]\rDownload: [100%]\n", "\r\nDownload: [50%]\r\nDownload: [100%]\n"},
+		{"行首 CR 不产生空行（进度行前置回车）", "\rDownload: [50%]\rDownload: [100%]\n", "Download: [50%]\r\nDownload: [100%]\n"},
 		{"结尾悬挂 CR", "abc\r", "abc\r\n"},
+		{"重复行尾 CR CR LF 折叠为一次换行", "a\r\r\nb", "a\r\nb"},
+		{"连续 CR 折叠为一次换行", "a\rrb", "a\r\nrb"},
+		{"CRLF 空行丢弃", "a\r\n\r\nb", "a\r\nb"},
+		{"LF 空行丢弃", "a\n\nb", "a\nb"},
+		{"纯空白行丢弃（aria2 填充）", "row1\r\n   \r\nrow2", "row1\r\nrow2"},
+		{"行尾空白裁剪", "Download: Results:   \r\n", "Download: Results:\r\n"},
+		{"行首缩进保留", "  indented\r\n", "  indented\r\n"},
+		{"全空白输入", "   \r\n", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
