@@ -17,13 +17,13 @@ go build -o scoop-gh-proxy.exe .
 ## 文件结构
 - `main.go` — 入口，参数分发（--set / --restore / --status / --update / --help / --version）
 - `internal/cli/cli.go` — set/restore/status 的输出（汇总、明细表、printRestoreTable）
-- `internal/cli/update.go` — RunUpdate：--update 的输出（遗留警告、分组明细、进度行、汇总、退出码）
+- `internal/cli/update.go` — RunUpdate：--update 的输出（遗留警告、分组明细、进度行、汇总、退出码）；proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（setScoopProxy / restoreScoopProxy，成功后同步更新 ScoopConfig 内存值）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
-- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdateProxiedApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、BeginProxyPhase / EndProxyPhase proxy 保护罩、classifyUpdateLine 与错误标记表
+- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdateProxiedApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、classifyUpdateLine 与错误标记表
 - `internal/scoop/exec_kill.go` — Windows Job Object 进程树终止（x/sys/windows）
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
@@ -69,7 +69,7 @@ go build -o scoop-gh-proxy.exe .
 - proxy 设置与恢复条件对称：set 仅在 Proxy 非空时备份并清空；restore 仅在 GhScoopProxyBackup 非空且与当前 Proxy 不同时恢复
 - manifest 中未被修改的字节逐字节保留：applyManifestEdits 只做命中区间的替换
 - --update 单个 app 失败不中断：错误输出命中标记、超时或非零退出都只记录状态，继续下一个，直到全部执行完
-- --update 的 proxy 保护罩成对出现：BeginProxyPhase 之后任何返回路径（含 panic）都必须 EndProxyPhase，cli 层用 defer 兜底
+- --update 的 proxy 保护罩：PrepareUpdate 成功后 cli 层立即 defer RestoreScoopProxy，函数任何返回路径（含 panic）退出时统一恢复；RestoreScoopProxy 幂等（无备份或已恢复时为 no-op），故单调用点即可，无需防重标志
 - --update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy，保证从干净状态开始（restoreScoopProxy 同步内存 cfg，无需二次 GetScoopConfig）
 - --update 的 Is github app 无论更新成败都还原 manifest；还原失败优先展示为 Failed（manifest 仍处于已修改状态，可再执行 --restore）
 
