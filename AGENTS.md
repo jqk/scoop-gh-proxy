@@ -12,6 +12,8 @@ go build -o dist\scoop-gh.exe .   # 直接构建（不经 build.bat，单架构�
 
 版本号规则：从 Git tag 计算——最近 tag 的 patch 号 + 其后提交次数（如 tag v0.1.0 之后 5 个提交 → 0.1.5；无 tag 时以 0.0.0 为基数、累计全部提交数）。build.bat 通过 `-ldflags -X` 注入 `internal/cli` 的 Version 与 BuildTime
 
+GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发（ubuntu runner 交叉编译 windows amd64/arm64），步骤内正则校验 tag 必须为 `v1.0.0` 格式否则失败；版本取自 tag（去 v 前缀）、构建时间为 runner 当前时间，经同样的 `-ldflags -X` 注入；发布产物为 `scoop-gh-<版本>-<架构>.zip`（内含 scoop-gh.exe 与 README.md），经 softprops/action-gh-release@v2 发布
+
 ## 分层
 - `internal/scoop` — 核心库：只接收参数、返回数据与 error，不打印、不 os.Exit。将来 GUI 与 internal/cli 平级，共用核心
 - `internal/cli` — 命令行交互层：彩色输出、明细表在这里；Run* 命令入口返回退出码、不直接 os.Exit，由 main 统一退出
