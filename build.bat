@@ -30,7 +30,7 @@ for %%a in (amd64 arm64) do (
     echo Building windows/%%a ...
     set GOARCH=%%a
     set CGO_ENABLED=0
-    go build -ldflags="-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.Version=%VERSION% -X github.com/jqk/scoop-gh-proxy/internal/cli.BuildTime=%BUILD_TIME%" -o dist\%%a\%EXE_NAME% . || goto :fail
+    go build -ldflags="-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=%VERSION% -X github.com/jqk/scoop-gh-proxy/internal/cli.buildTime=%BUILD_TIME%" -o dist\%%a\%EXE_NAME% . || goto :fail
 
     if exist README.md (
         copy /y README.md dist\%%a\README.md >nul

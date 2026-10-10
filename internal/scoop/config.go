@@ -1,6 +1,7 @@
 package scoop
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +13,7 @@ type ScoopConfig struct {
 	Proxy              string // scoop 使用的属性，定义 scoop update 命令使用的 http 代理。本程序的 set 命令会清空此值，restore 命令会恢复此值
 	GhScoopProxyBackup string // 本程序专用属性，备份 Proxy 值。restore 命令会使用此值恢复 Proxy
 	GhProxy            string // 本程序专用属性，定义面向 github 下载链接的数据代理
-	Aria2Enabled       bool   // scoop 使用的属性：是否启用 aria2 下载（scoop 默认 false）。当前仅暂存，供下载进度输出相关逻辑后续判断
+	Aria2Enabled       bool   // scoop 使用的属性：是否启用 aria2 下载（scoop 默认 false）。决定 --update 的下载进度来源：aria2 用自带 \r 进度流，默认下载器由 downloadProgress 自绘
 }
 
 // GetScoopConfig 执行 scoop config 命令，获取配置值。
@@ -75,24 +76,22 @@ func getKeyValue(line string) (key string, val string, found bool) {
 
 // validateConfig 校验 ScoopConfig 对象的属性
 func validateConfig(cfg *ScoopConfig) error {
-	// 5.1 root_path
 	if cfg.RootPath == "" {
-		return fmt.Errorf("scoop config 中 root_path 不存在或为空")
+		return errors.New("scoop config 中 root_path 不存在或为空")
 	}
 	if st, err := os.Stat(cfg.RootPath); err != nil || !st.IsDir() {
 		return fmt.Errorf("scoop config 中 root_path 对应目录不存在: %s", cfg.RootPath)
 	}
 
-	// 5.3 gh_proxy
 	if cfg.GhProxy == "" {
-		return fmt.Errorf("scoop config 中 gh_proxy 不存在或为空")
+		return errors.New("scoop config 中 gh_proxy 不存在或为空")
 	}
 
 	return nil
 }
 
 // SetScoopProxy set 命令的收尾：把当前 proxy 备份到 gh_scoop_proxy_backup，再清空 proxy。
-// 成功后同步更新 cfg，保持内存值与 scoop config 一致，后续 restoreScoopProxy 才能依据内存值判断出"需要恢复"
+// 成功后同步更新 cfg，保持内存值与 scoop config 一致，后续 RestoreScoopProxy 才能依据内存值判断出"需要恢复"
 func SetScoopProxy(cfg *ScoopConfig) error {
 	if cfg.Proxy != "" {
 		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
@@ -111,7 +110,8 @@ func SetScoopProxy(cfg *ScoopConfig) error {
 }
 
 // RestoreScoopProxy restore 命令的收尾：把 gh_scoop_proxy_backup 中备份的值恢复到 proxy。
-// 成功后同步更新 cfg.Proxy，保证重复调用安全
+// 仅在备份非空且 proxy 为空时恢复——本程序运行期间用户手动设置的其它非空 proxy 不被覆盖。
+// 成功后同步更新 cfg.Proxy，保证重复调用安全（已恢复时条件不成立，直接跳过）
 func RestoreScoopProxy(cfg *ScoopConfig) error {
 	if cfg.GhScoopProxyBackup != "" && cfg.Proxy == "" {
 		if _, err := runScoop("config", "proxy", cfg.GhScoopProxyBackup); err != nil {

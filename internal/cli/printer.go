@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func printUsage() {
-	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", Version))
+	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", version))
 	fmt.Println()
 	fmt.Println("用法:")
 	fmt.Println("  scoop-gh --set      将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
@@ -56,38 +57,21 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 	}
 
 	// 无 Status 列的两列表格（restore dry-run 使用）
-	nameW, bucketW := len("App Name"), len("Bucket Name")
+	rows := make([][]string, 0, len(items))
 	for _, it := range items {
-		nameW = max(nameW, len(it.Name))
-		bucketW = max(bucketW, len(it.Bucket))
+		rows = append(rows, []string{it.Name, it.Bucket})
 	}
-
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds\n", nameW, bucketW)
-	fmt.Printf(rowFmt, "App Name", "Bucket Name")
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW))
-
-	for _, it := range items {
-		fmt.Printf(rowFmt, it.Name, it.Bucket)
-	}
+	printTable(os.Stdout, []string{"App Name", "Bucket Name"}, rows, nil)
 }
 
 // printRestoreTable 输出带 Status 列的三列明细表（restore 与 --update 的遗留清理共用）
 func printRestoreTable(items []scoop.OutdatedApp) {
-	nameW, bucketW, statusW := len("App Name"), len("Bucket Name"), len("Status")
+	rows := make([][]string, 0, len(items))
 	for _, it := range items {
-		nameW = max(nameW, len(it.Name))
-		bucketW = max(bucketW, len(it.Bucket))
-		statusW = max(statusW, len(string(it.Status)))
+		rows = append(rows, []string{it.Name, it.Bucket, string(it.Status)})
 	}
-
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds\n", nameW, bucketW, statusW)
-	fmt.Printf(rowFmt, "App Name", "Bucket Name", "Status")
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(bucketW), dashRun(statusW))
-
-	for _, it := range items {
-		c := pickColor(string(it.Status))
-		c.Fprintf(os.Stdout, rowFmt, it.Name, it.Bucket, string(it.Status))
-	}
+	printTable(os.Stdout, []string{"App Name", "Bucket Name", "Status"}, rows,
+		func(row []string) *color.Color { return pickColor(row[2]) })
 }
 
 // ---------------------------------------------------------------------------
@@ -132,37 +116,64 @@ func printUpdateSummary(plan *scoop.UpdatePlan) {
 // 共享表格
 // ---------------------------------------------------------------------------
 
-func printSetTable(results []scoop.OutdatedApp) {
-	const (
-		hdrName   = "App Name"
-		hdrVer    = "Installed Version"
-		hdrLate   = "Latest Version"
-		hdrBucket = "Bucket Name"
-		hdrStatus = "Status"
-	)
-
-	nameW, verW, lateW, bucketW, statusW := len(hdrName), len(hdrVer), len(hdrLate), len(hdrBucket), len(hdrStatus)
-	for _, r := range results {
-		nameW = max(nameW, len(r.Name))
-		verW = max(verW, len(r.Installed))
-		lateW = max(lateW, len(r.Latest))
-		bucketW = max(bucketW, len(r.Bucket))
-		statusW = max(statusW, len(r.Status))
+// printTable 输出等宽明细表：各列宽度取表头与数据的最大宽度，列间两个空格，
+// 第二行为 "-" 分隔线。rowColor 为 nil 时行不着色；否则整行以其返回色输出
+func printTable(w io.Writer, headers []string, rows [][]string, rowColor func(row []string) *color.Color) {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			widths[i] = max(widths[i], len(cell))
+		}
 	}
 
-	rowFmt := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n", nameW, verW, lateW, bucketW, statusW)
-	fmt.Printf(rowFmt, hdrName, hdrVer, hdrLate, hdrBucket, hdrStatus)
-	fmt.Printf(rowFmt, dashRun(nameW), dashRun(verW), dashRun(lateW), dashRun(bucketW), dashRun(statusW))
+	specs := make([]string, len(widths))
+	dashes := make([]string, len(widths))
+	for i, wd := range widths {
+		specs[i] = fmt.Sprintf("%%-%ds", wd)
+		dashes[i] = dashRun(wd)
+	}
+	rowFmt := strings.Join(specs, "  ") + "\n"
 
+	printRow := func(cells []string) {
+		args := make([]any, len(cells))
+		for i, c := range cells {
+			args[i] = c
+		}
+		c := plainColor // 无属性的 Color 输出原样文本
+		if rowColor != nil {
+			if rc := rowColor(cells); rc != nil {
+				c = rc
+			}
+		}
+		c.Fprintf(w, rowFmt, args...)
+	}
+
+	printRow(headers)
+	printRow(dashes)
+	for _, row := range rows {
+		printRow(row)
+	}
+}
+
+func printSetTable(results []scoop.OutdatedApp) {
+	rows := make([][]string, 0, len(results))
 	for _, r := range results {
 		status := r.Status
 		if status == "" {
 			status = "Not github"
 		}
-		c := pickColor(string(status))
-		c.Fprintf(os.Stdout, rowFmt, r.Name, r.Installed, r.Latest, r.Bucket, status)
+		rows = append(rows, []string{r.Name, r.Installed, r.Latest, r.Bucket, string(status)})
 	}
+	printTable(os.Stdout,
+		[]string{"App Name", "Installed Version", "Latest Version", "Bucket Name", "Status"}, rows,
+		func(row []string) *color.Color { return pickColor(row[4]) })
 }
+
+// plainColor 无任何属性的 Color：wrap 时输出原样文本，用于不着色的行
+var plainColor = color.New()
 
 func pickColor(status string) *color.Color {
 	switch status {

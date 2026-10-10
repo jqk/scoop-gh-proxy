@@ -7,51 +7,8 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 错误分类
+// 成败判定
 // ---------------------------------------------------------------------------
-
-// updateErrorPrefixes 确定性失败的行首前缀（配合 classifyUpdateLine，已小写、
-// 已剥 "Download: " 前缀）。来源为 scoop 源码（e:\scoop\apps\scoop）：
-//   - "error "           scoop error 助手（core.ps1：Write-Host "ERROR <msg>"，含 app
-//                        pre_uninstall 脚本的权限检查、hash 失败等）
-//   - "error: "          git 的 error: 前缀
-//   - "fatal: "          git 的 fatal: 前缀（无法访问远端、桶损坏等）
-//   - "please try again" new_issue_msg（buckets.ps1，abort 红字无前缀，下载/hash 失败；
-//                        API 限流、SourceForge 提示中的同片段也均在失败语境）
-//   - "exception "       PowerShell 未捕获异常
-var updateErrorPrefixes = []string{
-	"error ",
-	"error: ",
-	"fatal: ",
-	"please try again",
-	"exception ",
-}
-
-// classifyUpdateLine 判断一行（已去 ANSI 的）scoop 输出是否为确定性失败。
-// 只认行首前缀/整句形态，不做宽泛子串匹配：aria2 失败重试的瞬时噪声
-// （errorCode=1、"(ERR):error occurred"、表格 ERR 行）与 WARN 提示
-// （"Download failed!" 后 Fallback 重试）都不是终态——最终成败以成功标志
-// （updateVerdict）为准，本函数的命中只用于失败原因的收集展示
-func classifyUpdateLine(line string) bool {
-	lower := strings.ToLower(strings.TrimSpace(line))
-	lower = strings.TrimPrefix(lower, "download: ") // aria2 输出经 scoop 转发带的行前缀
-
-	if strings.HasPrefix(lower, "warn") { // scoop warn 助手 / PowerShell WARNING：提示性输出，非终态
-		return false
-	}
-	if lower == "running process detected, skip updating." { // scoop-update.ps1：普通输出，无前缀
-		return true
-	}
-	for _, prefix := range updateErrorPrefixes {
-		if strings.HasPrefix(lower, prefix) {
-			return true
-		}
-	}
-	// 钩子脚本场景：scoop 以 -NoNewline 打印 "Running pre_uninstall script... "，
-	// 脚本内 error 助手的 "ERROR <msg>" 拼接在同一行，只能句中匹配。
-	// 瞬时噪声均为小写无空格形态（errorCode、):error），不会命中
-	return strings.Contains(lower, " error ")
-}
 
 // updateSuccessMarkers scoop update <app> 成功的输出标志（大小写不敏感子串）。
 // 两者都由 scoop 在流程末尾打印，是最终定论；其后可能还有 notes 等输出，不影响判定
@@ -62,12 +19,8 @@ var updateSuccessMarkers = []string{
 
 // matchUpdateSuccess 判断一行（已去 ANSI 的）scoop 输出是否命中成功标志
 func matchUpdateSuccess(line string) bool {
-	return containsMarker(line, updateSuccessMarkers)
-}
-
-func containsMarker(line string, markers []string) bool {
 	line = strings.ToLower(line)
-	for _, marker := range markers {
+	for _, marker := range updateSuccessMarkers {
 		if strings.Contains(line, marker) {
 			return true
 		}
@@ -91,12 +44,13 @@ type UpdatePlan struct {
 
 // PrepareUpdate --update 的准备阶段：
 //  1. 清理上次运行遗留的备份 manifest 与 proxy，保证从干净状态开始
-//     （清理改写的 proxy 已由 restoreScoopProxy 同步到内存 cfg，无需重新获取配置）
+//     （直接复用 restore 主流程 RestoreOutdatedAppManifests；其恢复的 proxy
+//     已同步到内存 cfg，无需重新获取配置）
 //  2. 执行 scoop status -l，逐个分析并把 outdated apps 分为三组
 func PrepareUpdate(cfg *ScoopConfig) (UpdatePlan, error) {
 	plan := UpdatePlan{}
 
-	leftovers, err := cleanupLeftovers(cfg)
+	leftovers, err := RestoreOutdatedAppManifests(cfg, false)
 	if err != nil {
 		return plan, err
 	}
@@ -125,25 +79,6 @@ func PrepareUpdate(cfg *ScoopConfig) (UpdatePlan, error) {
 	return plan, nil
 }
 
-// cleanupLeftovers 还原上次运行遗留的备份 manifest 与被备份清空的 proxy。
-// 单个 app 还原失败只记录在其 Status 中，由输出层展示
-func cleanupLeftovers(cfg *ScoopConfig) ([]OutdatedApp, error) {
-	apps, err := findProxiedManifests(cfg.RootPath)
-	if err != nil {
-		return apps, fmt.Errorf("扫描 buckets 目录失败: %v", err)
-	}
-
-	for i := range apps {
-		_ = restoreProxiedManifest(&apps[i]) // 失败已记录在 apps[i].Status
-	}
-
-	if err := RestoreScoopProxy(cfg); err != nil {
-		return apps, fmt.Errorf("恢复 scoop config proxy 失败: %v", err)
-	}
-
-	return apps, nil
-}
-
 // ---------------------------------------------------------------------------
 // 逐个更新
 // ---------------------------------------------------------------------------
@@ -159,7 +94,7 @@ func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 	stop := dp.Start()
 	defer stop()
 
-	_, successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
+	successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
 	app.Status = updateVerdict(successSeen)
 }
 
@@ -186,7 +121,7 @@ func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 	stop := dp.Start()
 	defer stop()
 
-	_, successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
+	successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
 	verdict := updateVerdict(successSeen)
 
 	if app.Status == IsGitHub { // 无论更新成败都还原 manifest

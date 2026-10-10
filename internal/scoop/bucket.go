@@ -75,12 +75,12 @@ func findProxiedManifests(rootPath string) ([]OutdatedApp, error) {
 		return apps, err
 	}
 
-	for _, budgetEntry := range bucketList { // 第一轮循环，列出如 E:\Scoop\buckets 下的所有桶
-		if !budgetEntry.IsDir() {
+	for _, bucketEntry := range bucketList { // 第一轮循环，列出如 E:\Scoop\buckets 下的所有桶
+		if !bucketEntry.IsDir() {
 			continue // scoopBucketsRoot 下每个子目录就是一个 bucket，所以跳过非目录
 		}
 
-		bucketName = budgetEntry.Name()                          // 子目录名就是桶的名称，如 extras
+		bucketName = bucketEntry.Name()                          // 子目录名就是桶的名称，如 extras
 		bucketDir := filepath.Join(scoopBucketsRoot, bucketName) // 如 E:\Scoop\buckets\extras
 
 		bucketItems, err := os.ReadDir(bucketDir) // 获取桶内的子目录和文件列表。少数桶内的 bucket 目录是多层的
@@ -188,4 +188,20 @@ func findManifest(rootPath, appName, bucketName string) string {
 	})
 
 	return manifestPath // 按逻辑必然有值，所以返回空字符串表示有错误
+}
+
+// fillBucketManifest 补全 OutdatedApp 的 manifest 及 manifestBackup。
+// 定位失败时把状态记录为 NoManifest 并返回 false
+func fillBucketManifest(rootPath string, app *OutdatedApp) bool {
+	if app.Bucket = findBucket(rootPath, app.Name); app.Bucket == "" {
+		app.Status = NoManifest
+		return false
+	}
+	if app.Manifest = findManifest(rootPath, app.Name, app.Bucket); app.Manifest == "" {
+		app.Status = NoManifest
+		return false
+	}
+
+	app.ManifestBackup = createManifestBackupName(app.Manifest) // 有 manifest 才确定备份文件名
+	return true
 }

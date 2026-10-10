@@ -49,7 +49,7 @@ jobs:
           BUILD_TIME=$(date +%Y-%m-%d_%H:%M:%S)
           mkdir -p dist/${{ matrix.arch }}
           go build -trimpath \
-            -ldflags "-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.Version=${{ steps.version.outputs.version }} -X github.com/jqk/scoop-gh-proxy/internal/cli.BuildTime=${BUILD_TIME}" \
+            -ldflags "-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=${{ steps.version.outputs.version }} -X github.com/jqk/scoop-gh-proxy/internal/cli.buildTime=${BUILD_TIME}" \
             -o dist/${{ matrix.arch }}/scoop-gh.exe .
           cp README.md dist/${{ matrix.arch }}/
 

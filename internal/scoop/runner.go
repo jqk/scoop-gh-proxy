@@ -28,7 +28,6 @@ func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, erro
 		}
 	}
 
-	err = nil
 	if !dryRun && count > 0 {
 		err = SetScoopProxy(cfg)
 	}
@@ -50,7 +49,9 @@ func RestoreOutdatedAppManifests(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, 
 			_ = restoreProxiedManifest(&apps[i]) // 失败已记录在 apps[i].Status，由明细表展示
 		}
 
-		err = RestoreScoopProxy(cfg)
+		if err := RestoreScoopProxy(cfg); err != nil {
+			return apps, fmt.Errorf("恢复 scoop config proxy 失败: %w", err)
+		}
 	}
 
 	return apps, err

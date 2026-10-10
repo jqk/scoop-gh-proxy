@@ -1,6 +1,6 @@
 package scoop
 
-type OutdatedAppStatus string // set / restore 命令中 Status 列的枚举值
+type OutdatedAppStatus string // set / restore / update 命令中 Status 列的枚举值
 
 const (
 	Unknown        OutdatedAppStatus = "Unknown"                // 刚刚初始化，应继续执行
@@ -14,8 +14,8 @@ const (
 	ProxySet       OutdatedAppStatus = "Proxy set"              // url 已带 gh_proxy 前缀，无需重复设置，终止执行
 	RestoreSuccess OutdatedAppStatus = "Success"                // restore：还原成功
 	RestoreFailed  OutdatedAppStatus = "Failed"                 // restore：还原失败
-	Updated        OutdatedAppStatus = "Updated"                // --update：scoop update <app> 成功
-	UpdateFailed   OutdatedAppStatus = "Update failed"          // --update：更新失败（输出有错误、超时或进程异常退出）
+	Updated        OutdatedAppStatus = "Updated"                // --update：捕获到成功标志
+	UpdateFailed   OutdatedAppStatus = "Update failed"          // --update：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底）
 )
 
 // OutdatedApp 对应 scoop status -l 中一行 app 记录，还附加有本程序使用的属性。
@@ -32,19 +32,4 @@ type OutdatedApp struct {
 	Status           OutdatedAppStatus // 本程序的属性：状态值
 	OriginalManifest []byte            // 本程序的属性：manifest 原始内容
 	Edits            []ManifestEdit    // 本程序的属性：manifest 中待应用的 url 修改清单
-}
-
-// fillBucketManifest 补全 OutdatedApp 的 manifest 及 manifestBackup
-func fillBucketManifest(rootPath string, app *OutdatedApp) bool {
-	if app.Bucket = findBucket(rootPath, app.Name); app.Bucket == "" {
-		app.Status = NoManifest
-		return false
-	}
-	if app.Manifest = findManifest(rootPath, app.Name, app.Bucket); app.Manifest == "" {
-		app.Status = NoManifest
-		return false
-	}
-
-	app.ManifestBackup = createManifestBackupName(app.Manifest) // 有 manifest 才确定备份文件名
-	return true
 }

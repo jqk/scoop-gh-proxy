@@ -1,7 +1,7 @@
 package scoop
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -29,13 +29,13 @@ func getOutdatedApps() ([]OutdatedApp, error) {
 	if lineCount == 1 && nonEmptyLines[0] == "Everything is ok!" {
 		return nil, nil // 没有待升级的软件，直接返回。scoop status -l 不会什么都不返回
 	} else if lineCount < 2 { // 至少要有标题行和分隔线
-		return nil, fmt.Errorf("scoop status -l 输出缺少标题行或分隔线")
+		return nil, errors.New("scoop status -l 输出缺少标题行或分隔线")
 	}
 
 	// 分隔线行的 "-" 字符位置决定了各列的起始位置，是有内容的第 2 行，且有 5 列
 	starts := findColumnStarts(nonEmptyLines[1])
 	if len(starts) < 5 {
-		return nil, fmt.Errorf("scoop status -l 分隔线列数不足 5，无法解析")
+		return nil, errors.New("scoop status -l 分隔线列数不足 5，无法解析")
 	}
 
 	var apps []OutdatedApp
@@ -46,7 +46,8 @@ func getOutdatedApps() ([]OutdatedApp, error) {
 	return apps, nil
 }
 
-// findColumnStarts 根据分隔线确定 5 列的起始位置（按 "-" 分组）
+// findColumnStarts 根据分隔线确定 5 列的起始位置（按 "-" 分组）。
+// 依赖分隔线行以 "-" 结尾（调用前已 TrimSpace），内层跳空格的循环才不会越界
 func findColumnStarts(sep string) (starts []int) {
 	length := len(sep)
 	i := 0

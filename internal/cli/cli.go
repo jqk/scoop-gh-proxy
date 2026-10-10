@@ -7,12 +7,22 @@ import (
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
-// Version 版本号，构建时由 build.bat 通过 -ldflags -X 注入
+// version 版本号，构建时由 build.bat / release.yml 通过 -ldflags -X 注入
 // （规则：最近 tag 的 patch 号 + 其后提交次数）；直接 go build 时为 dev
-var Version = "dev"
+var version = "dev"
 
-// BuildTime 构建时间（2006-01-02_15:04:05），构建时注入；为空表示非 build.bat 构建
-var BuildTime = ""
+// buildTime 构建时间（2006-01-02_15:04:05），构建时注入；为空表示非脚本构建
+var buildTime = ""
+
+// loadConfig 获取并校验 scoop 配置；失败时打印错误，code 非 0 为应退出的退出码
+func loadConfig() (cfg scoop.ScoopConfig, code int) {
+	cfg, err := scoop.GetScoopConfig()
+	if err != nil {
+		error_("%s", err)
+		return cfg, 1
+	}
+	return cfg, 0
+}
 
 // ---------------------------------------------------------------------------
 // set
@@ -20,13 +30,15 @@ var BuildTime = ""
 
 // RunSet --set：定位 + 备份 + 修改 [app].json。返回退出码：1 = 配置错误
 func RunSet(dryRun bool) int {
-	cfg, err := scoop.GetScoopConfig()
-	if err != nil {
-		error_("%s", err)
-		return 1
+	cfg, code := loadConfig()
+	if code != 0 {
+		return code
 	}
+	return runSet(&cfg, dryRun)
+}
 
-	apps, err := scoop.SetProxyForOutdatedApps(&cfg, dryRun)
+func runSet(cfg *scoop.ScoopConfig, dryRun bool) int {
+	apps, err := scoop.SetProxyForOutdatedApps(cfg, dryRun)
 	if err != nil {
 		error_("%s", err)
 	}
@@ -40,13 +52,15 @@ func RunSet(dryRun bool) int {
 
 // RunRestore --restore：还原 backup。返回退出码：1 = 配置错误
 func RunRestore(dryRun bool) int {
-	cfg, err := scoop.GetScoopConfig()
-	if err != nil {
-		error_("%s", err)
-		return 1
+	cfg, code := loadConfig()
+	if code != 0 {
+		return code
 	}
+	return runRestore(&cfg, dryRun)
+}
 
-	items, err := scoop.RestoreOutdatedAppManifests(&cfg, dryRun)
+func runRestore(cfg *scoop.ScoopConfig, dryRun bool) int {
+	items, err := scoop.RestoreOutdatedAppManifests(cfg, dryRun)
 	if err != nil {
 		error_("%s", err)
 	}
@@ -58,13 +72,17 @@ func RunRestore(dryRun bool) int {
 // status（dry-run：先 restore 明细，后 set 明细，不修改任何文件）
 // ---------------------------------------------------------------------------
 
-// RunStatus --status：依次以 dry-run 执行 restore 与 set。返回退出码：1 = 配置错误
+// RunStatus --status：依次以 dry-run 执行 restore 与 set（配置只取一次）。返回退出码：1 = 配置错误
 func RunStatus() int {
-	if code := RunRestore(true); code != 0 {
+	cfg, code := loadConfig()
+	if code != 0 {
+		return code
+	}
+	if code := runRestore(&cfg, true); code != 0 {
 		return code
 	}
 	fmt.Println() // 分隔 restore 明细与 set 明细
-	return RunSet(true)
+	return runSet(&cfg, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -73,10 +91,9 @@ func RunStatus() int {
 
 // RunUpdate --update。返回退出码：1 = 配置错误、status -l 失败或 proxy 清空失败
 func RunUpdate() int {
-	cfg, err := scoop.GetScoopConfig()
-	if err != nil {
-		error_("%s", err)
-		return 1
+	cfg, code := loadConfig()
+	if code != 0 {
+		return code
 	}
 
 	plan, err := scoop.PrepareUpdate(&cfg)
@@ -145,12 +162,12 @@ func RunHelp() int {
 	return 0
 }
 
-// RunVersion --version / -v：输出版本号（build.bat 构建时附带构建时间）
+// RunVersion --version / -v：输出版本号（脚本构建时附带构建时间）
 func RunVersion() int {
-	if BuildTime != "" {
-		fmt.Printf("%s (built %s)\n", Version, BuildTime)
+	if buildTime != "" {
+		fmt.Printf("%s (built %s)\n", version, buildTime)
 	} else {
-		fmt.Println(Version)
+		fmt.Println(version)
 	}
 	return 0
 }
