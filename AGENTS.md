@@ -21,7 +21,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - `main.go` — 入口，参数分发（--set / --restore / --status / --update / --help / --version），按 cli.Run* 返回的退出码统一 os.Exit
 - `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunHelp / RunVersion），返回退出码；--update 的 proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
 - `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary）
-- `internal/cli/output.go` — 彩色输出（info/success/warning/error_）、IsTTY
+- `internal/cli/output.go` — 彩色输出（info/success/warning/error_/caution/fail）、IsTTY；caution/fail 走 stdout
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（SetScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，暂存供下载进度逻辑后续判断）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
@@ -75,6 +75,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - --update 的成败判定以成功标志为准（updateVerdict）：成功标志（was installed successfully / Latest versions for all apps are installed）由 scoop 在流程末尾打印，是最终定论；未见成功标志一律判失败。aria2 失败重试/Fallback 场景的瞬时噪声（errorCode、(ERR)、WARN Download failed）不参与成败判定
 - --update 的失败分类（classifyUpdateLine）只认确定性形态：行首前缀（scoop 的 "ERROR "、git 的 "error: "/"fatal: "、new_issue_msg 的 "Please try again"、PowerShell 的 "Exception "）、整句（"Running process detected, skip updating."）与 pre_uninstall 拼接行的句中 " ERROR "；WARN 行与非终态噪声一律排除。前缀表与成功标志表集中在 update.go，取自 scoop 源码（e:\scoop\apps\scoop）与真实输出
 - --update 的 proxy 保护罩：PrepareUpdate 成功后 cli 层立即 defer RestoreScoopProxy，函数任何返回路径（含 panic）退出时统一恢复；RestoreScoopProxy 幂等（无备份或已恢复时为 no-op），故单调用点即可，无需防重标志。RunUpdate 以返回退出码代替 os.Exit，defer 因此也覆盖 SetScoopProxy 失败路径
+- --update 的逐 app 提示行（[n/m] 表头、Proxy set 警告、更新结果）与 scoop 流式输出同写 stdout（caution/fail），保证先后顺序不被 stderr 合并打乱；error_/warning 走 stderr，仅用于不与流式输出交错的独立消息（配置错误、收尾恢复失败等）
 - --update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy，保证从干净状态开始（restoreScoopProxy 同步内存 cfg，无需二次 GetScoopConfig）
 - --update 的 Is github app 无论更新成败都还原 manifest；还原失败优先展示为 Failed（manifest 仍处于已修改状态，可再执行 --restore）
 

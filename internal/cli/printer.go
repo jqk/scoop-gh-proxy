@@ -94,15 +94,15 @@ func printRestoreTable(items []scoop.OutdatedApp) {
 // update 输出
 // ---------------------------------------------------------------------------
 
-// printAppOutcome 输出单个 app 的更新结果行
+// printAppOutcome 输出单个 app 的更新结果行（走 stdout，与 scoop 流式输出同流保序）
 func printAppOutcome(app *scoop.OutdatedApp) {
 	switch app.Status {
 	case scoop.Updated:
 		success("%s: %s", app.Name, app.Status)
 	case scoop.UpdateFailed, scoop.RestoreFailed:
-		error_("%s: %s", app.Name, app.Status)
+		fail("%s: %s", app.Name, app.Status)
 	default:
-		warning("%s: %s", app.Name, app.Status) // BackupExists 等未参与更新的状态
+		caution("%s: %s", app.Name, app.Status) // BackupExists 等未参与更新的状态
 	}
 }
 

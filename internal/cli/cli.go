@@ -120,8 +120,9 @@ func RunUpdate() int {
 		}
 
 		for _, app := range plan.Proxied {
+			fmt.Println() // 每个 app 的输出块之间空一行分隔
 			if app.Status == scoop.ProxySet {
-				warning("%s: manifest 已带 gh_proxy 前缀且无备份，更新后保持原状", app.Name)
+				caution("%s: manifest 已带 gh_proxy 前缀且无备份，更新后保持原状", app.Name)
 			}
 			done++
 			info("[%d/%d] %s", done, total, app.Name)
