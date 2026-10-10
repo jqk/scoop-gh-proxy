@@ -7,7 +7,7 @@ Windows Go CLI 工具，用于修改 scoop bucket 中 `[app].json` 的 GitHub UR
 ```
 build.bat             # 输出 dist\scoop-gh.exe，注入版本号与构建时间，复制 README.md
 build.bat --version   # 仅预览目标版本号，不构建
-go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
+go build -o dist\scoop-gh.exe .   # 直接构建（不经 build.bat）：Version 为 dev、无构建时间；输出到 dist，勿在项目根目录留 exe
 ```
 
 版本号规则：从 Git tag 计算——最近 tag 的 patch 号 + 其后提交次数（如 tag v0.1.0 之后 5 个提交 → 0.1.5；无 tag 时以 0.0.0 为基数、累计全部提交数）。build.bat 通过 `-ldflags -X` 注入 `internal/cli` 的 Version 与 BuildTime
@@ -97,7 +97,7 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 
 ## 编译验证
 ```
-go build -o scoop-gh.exe .
+go build ./...
 go vet ./...
 go test ./...
 ```
