@@ -1,8 +1,10 @@
 package scoop
 
 import (
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDownloadProgressFeed(t *testing.T) {
@@ -45,45 +47,48 @@ func TestNilSafeDownloadProgress(t *testing.T) {
 	stop() // 幂等
 }
 
-func TestRenderDownloadLine(t *testing.T) {
-	total := int64(15 * 1024 * 1024)
-	got := renderDownloadLine("uv.zip", total/2, total) // 50%
-	if !strings.Contains(got, "uv.zip (7.5 MB/15.0 MB) [") {
-		t.Errorf("50%% 行前缀不符: %q", got)
+// TestDownloadProgressTickEmits tick 应把 *.download 文件大小与解析出的总量组装成 Progress 事件
+func TestDownloadProgressTickEmits(t *testing.T) {
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "cache") // 轮询目录是 rootPath 下的 cache 子目录
+	if err := os.Mkdir(cacheDir, 0755); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.HasSuffix(got, "]  50%") {
-		t.Errorf("50%% 行结尾不符: %q", got)
-	}
-	bar := got[strings.Index(got, "[")+1 : strings.Index(got, "]")]
-	if !strings.Contains(bar, ">") || len(bar) != 30 {
-		t.Errorf("进度条形态不符: %q", bar)
+	var got []Progress
+	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
+	d.mu.Lock()
+	d.total = 1000
+	d.lastAt = time.Now().Add(-time.Hour) // 绕过限频
+	d.mu.Unlock()
+
+	d.tick() // cache 目录为空：不应有事件
+	if len(got) != 0 {
+		t.Fatalf("无下载文件时不应上报，实际 %v", got)
 	}
 
-	got = renderDownloadLine("uv.zip", total, total) // 100%
-	if !strings.HasSuffix(got, "] 100%") || strings.Contains(got, ">") {
-		t.Errorf("100%% 行不符: %q", got)
+	file := filepath.Join(cacheDir, "uv#0.13.0#a48fd9a.zip.download")
+	if err := os.WriteFile(file, make([]byte, 420), 0644); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	d.lastAt = time.Now().Add(-time.Hour)
+	d.mu.Unlock()
+
+	d.tick()
+	if len(got) != 1 {
+		t.Fatalf("期望 1 个事件，实际 %v", got)
+	}
+	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 420, Total: 1000}
+	if got[0] != want {
+		t.Errorf("事件不符: got %+v, want %+v", got[0], want)
 	}
 
-	got = renderDownloadLine("uv.zip", 2048, 0) // 总量未知
-	if !strings.HasPrefix(got, "uv.zip (2.0 KB) [") {
-		t.Errorf("未知总量行不符: %q", got)
-	}
-}
-
-func TestHumanSize(t *testing.T) {
-	cases := []struct {
-		in   int64
-		want string
-	}{
-		{512, "512 B"},
-		{1024, "1024 B"}, // scoop filesize 为严格大于：恰好 1KB 仍显示 B
-		{1025, "1.0 KB"},
-		{15 * 1024 * 1024, "15.0 MB"},
-		{int64(1.5 * 1024 * 1024 * 1024), "1.5 GB"},
-	}
-	for _, c := range cases {
-		if got := humanSize(c.in); got != c.want {
-			t.Errorf("humanSize(%d) = %q, want %q", c.in, got, c.want)
-		}
+	// 百分比未变（42%）时即便绕过限频也不重复上报
+	d.mu.Lock()
+	d.lastAt = time.Now().Add(-time.Hour)
+	d.mu.Unlock()
+	d.tick()
+	if len(got) != 1 {
+		t.Errorf("整百分比未变不应重复上报，实际 %v", got)
 	}
 }

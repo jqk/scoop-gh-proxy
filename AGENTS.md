@@ -15,29 +15,29 @@ go build -o dist\scoop-gh.exe .   # 直接构建（不经 build.bat，单架构�
 GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发（ubuntu runner 交叉编译 windows amd64/arm64），步骤内正则校验 tag 必须为 `v1.0.0` 格式否则失败；版本取自 tag（去 v 前缀）、构建时间为 runner 当前时间，经同样的 `-ldflags -X` 注入；发布产物为 `scoop-gh-<版本>-<架构>.zip`（内含 scoop-gh.exe 与 README.md），经 softprops/action-gh-release@v2 发布
 
 ## 分层
-- `internal/scoop` — 核心库：只接收参数、返回数据与 error，不打印、不 os.Exit。将来 GUI 与 internal/cli 平级，共用核心
+- `internal/scoop` — 核心库：只接收参数、返回数据与 error，不打印、不 os.Exit、不生成展示文本（进度经 Progress 结构化事件回调，渲染由调用方负责）。将来 GUI 与 internal/cli 平级，共用核心
 - `internal/cli` — 命令行交互层：彩色输出、明细表在这里；Run* 命令入口返回退出码、不直接 os.Exit，由 main 统一退出
 - 依赖方向单向：main → internal/cli → internal/scoop，反向禁止
 
 ## 文件结构
 - `main.go` — 入口，参数分发（--set / --restore / --status / --update / --help / --version），按 cli.Run* 返回的退出码统一 os.Exit
 - `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunHelp / RunVersion），返回退出码；--update 的 proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
-- `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary）
+- `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary / printTable）、下载进度渲染（printDownloadProgress / renderDownloadLine / humanSize，消费 scoop.Progress 事件）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_/caution/fail）、IsTTY；caution/fail 走 stdout
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（ClearScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，控制 --update 的下载进度来源：aria2 用自带 \r 进度流，默认下载器用 downloadProgress 自绘）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
-- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组（遗留清理复用 RestoreOutdatedAppManifests）、UpdateProxiedApp / UpdatePlainApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、matchUpdateSuccess 成功标志表 + updateVerdict（以成功标志为最终定论）
-- `internal/scoop/download_progress.go` — downloadProgress：aria2 关闭时自绘下载进度（scoop 检测到输出重定向会关闭自带进度条；轮询 cache 的 *.download 临时文件大小，总量从 "Downloading <url> (<size>)..." 行解析；方法 nil-safe，aria2 启用时传 nil）
+- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组（遗留清理复用 RestoreOutdatedAppManifests）、UpdateProxiedApp / UpdatePlainApp 逐个更新（参数：透传 writer + Progress 进度回调；UpdatePlainApp 为 Not github 组预留，暂无调用方）、matchUpdateSuccess 成功标志表 + updateVerdict（以成功标志为最终定论）
+- `internal/scoop/download_progress.go` — downloadProgress：aria2 关闭时轮询 cache 的 *.download 文件产生 Progress 结构化事件（总量从 "Downloading <url> (<size>)..." 行解析；渲染由调用方负责，核心层不生成展示文本；方法 nil-safe，aria2 启用或无回调时传 nil）
 - `internal/scoop/job_object.go` — Windows Job Object（x/sys/windows）：KILL_ON_JOB_CLOSE 保证本程序退出（含异常）时子进程树一并终止，防孤儿
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（analyzeManifest / locateManifestEdits / applyManifestEdits，jsontext 流式；扫描器在 manifest_scanner.go）
 - `internal/scoop/manifest_scanner.go` — manifestScanner：jsontext 流式扫描 manifest 的状态与方法（scanArchitecture / scanArchBlock / scanURLValue / scanURLElement / readMemberName）
 - `internal/scoop/run_scoop.go` — scoop 命令执行：runScoop（全量捕获，无超时）、runScoopStream（流式透传 + 逐行扫描，无超时，observe 回调供调用方捕获行；命中成功标志置位，错误行不收集、随透传直接显示）、streamPipe 与 lineFilter（显示侧只输出有内容的行：分隔符折叠（\r+ 及其后至多一个 \n）、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留，对齐真实终端观感）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
-- `internal/scoop/download_progress_test.go` — Feed 解析 / renderDownloadLine / humanSize 的单测
+- `internal/scoop/download_progress_test.go` — Feed 解析 / tick 事件 / nil-safe 的单测
 - `internal/scoop/update_test.go` — matchUpdateSuccess / updateVerdict 的单测
-- `internal/cli/printer_test.go` — printTable 的单测
+- `internal/cli/printer_test.go` — printTable / renderDownloadLine / humanSize 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找；fillBucketManifest 定位补全
 - `internal/scoop/tools.go` — stripAnsi、fileExists
 

@@ -1,8 +1,6 @@
 package scoop
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,42 +10,50 @@ import (
 	"time"
 )
 
-// downloadProgress 为 aria2 关闭时的 scoop 默认下载器自绘下载进度。
+// Progress 一次下载进度的快照（aria2 关闭时由核心轮询 cache 的 *.download 产生）。
+// 核心层只产出结构化事件，渲染由调用方（cli / 将来的 GUI）负责
+type Progress struct {
+	File       string // 正在下载的文件名（cache 中的 *.download，已去后缀）
+	Downloaded int64  // 已下载字节数
+	Total      int64  // 总字节数；0 = 未知（服务器未返回 Content-Length）
+}
+
+// downloadProgress 为 aria2 关闭时的 scoop 默认下载器轮询下载进度。
 //
 // 背景：scoop 检测到 stdout 被重定向即关闭自带进度条（download.ps1 的
 // [console]::IsOutputRedirected 判断），只输出一行 "Downloading <url> (<总量>)..."
 // 后静默，管道侧拿不到任何进度字节。好在默认下载器边下边写 cache 目录的
 // <name>.download 临时文件（完成后改名），总量又能从那行解析——轮询临时文件
-// 大小即可自行渲染进度：
+// 大小即可得到进度，以 Progress 事件回调给调用方：
 //   - Feed：接到扫描行时解析 "Downloading <url> (15.0 MB)..." 得到本次总量
-//   - Start/Stop：轮询 cache 下最新的 *.download（200ms），整百分比变化时输出一行
+//   - Start/Stop：轮询 cache 下最新的 *.download（200ms），整百分比变化时发一次事件
 //
-// aria2 启用时构造方传 nil（aria2 自带 \r 进度流，经 streamPipe 展示即可）；
+// aria2 启用时构造方传 nil（aria2 自带 \r 进度流，经透传展示即可）；
 // 所有方法 nil-safe，调用点无需判断
 type downloadProgress struct {
-	w        io.Writer
-	cacheDir string
+	onProgress func(Progress)
+	cacheDir   string
 
 	mu      sync.Mutex
-	total   int64     // 总字节数，0 = 未知（退化为只显示已下载量）
-	lastPct int       // 上次输出的整百分比
-	lastAt  time.Time // 上次输出时间（限频）
+	total   int64     // 总字节数，0 = 未知
+	lastPct int       // 上次上报的整百分比
+	lastAt  time.Time // 上次上报时间（限频）
 }
 
 // "Downloading <url> (15.0 MB)..."（download.ps1:160）。总量为 scoop filesize
 // 格式：1024 进制、一位小数，单位 B/KB/MB/GB；数值可能带千分位逗号
 var downloadingLineRe = regexp.MustCompile(`^Downloading \S+ \(([\d.,]+)\s*(B|KB|MB|GB)\)\.\.\.$`)
 
-func newDownloadProgress(w io.Writer, rootPath string) *downloadProgress {
-	return &downloadProgress{w: w, cacheDir: filepath.Join(rootPath, "cache")}
+func newDownloadProgress(onProgress func(Progress), rootPath string) *downloadProgress {
+	return &downloadProgress{onProgress: onProgress, cacheDir: filepath.Join(rootPath, "cache")}
 }
 
-// newDownloadProgressFor 按配置决定是否启用自绘进度：aria2 启用时返回 nil
-func newDownloadProgressFor(cfg *ScoopConfig, w io.Writer) *downloadProgress {
-	if cfg == nil || cfg.Aria2Enabled {
+// newDownloadProgressFor 按配置决定是否启用进度轮询：aria2 启用或无回调时返回 nil
+func newDownloadProgressFor(cfg *ScoopConfig, onProgress func(Progress)) *downloadProgress {
+	if cfg == nil || cfg.Aria2Enabled || onProgress == nil {
 		return nil
 	}
-	return newDownloadProgress(w, cfg.RootPath)
+	return newDownloadProgress(onProgress, cfg.RootPath)
 }
 
 // Feed 解析 scoop 输出行，捕获下载总量（每次新下载都会重新输出该行）。nil-safe
@@ -107,7 +113,7 @@ func (d *downloadProgress) loop(done <-chan struct{}) {
 
 func (d *downloadProgress) tick() {
 	name, size, ok := currentDownload(d.cacheDir)
-	if !ok {
+	if !ok || d.onProgress == nil {
 		return
 	}
 
@@ -127,7 +133,7 @@ func (d *downloadProgress) tick() {
 		}
 		d.lastAt = now
 	}
-	fmt.Fprint(d.w, renderDownloadLine(name, size, d.total)+"\n")
+	d.onProgress(Progress{File: name, Downloaded: size, Total: d.total})
 }
 
 // currentDownload 找 cache 目录中正在写入的 *.download 临时文件（取最新修改的那个）
@@ -147,44 +153,4 @@ func currentDownload(dir string) (name string, size int64, ok bool) {
 		return "", 0, false
 	}
 	return strings.TrimSuffix(filepath.Base(best), ".download"), size, true
-}
-
-// renderDownloadLine 渲染一行进度（样式仿 scoop 自带进度条）：
-//
-//	uv-x86_64-pc-windows-msvc.zip (6.3 MB/15.0 MB) [===========>                   ]  42%
-func renderDownloadLine(name string, size, total int64) string {
-	const barW = 30
-	pct := 0
-	if total > 0 {
-		pct = int(size * 100 / total)
-		if pct > 100 {
-			pct = 100
-		}
-	}
-	filled := pct * barW / 100
-	bar := strings.Repeat("=", filled)
-	if filled > 0 && filled < barW {
-		bar += ">"
-	}
-	bar += strings.Repeat(" ", barW-len(bar))
-
-	if total > 0 {
-		return fmt.Sprintf("%s (%s/%s) [%s] %3d%%", name, humanSize(size), humanSize(total), bar, pct)
-	}
-	return fmt.Sprintf("%s (%s) [%s]", name, humanSize(size), bar)
-}
-
-// humanSize scoop filesize 的 Go 版（core.ps1：1024 进制，一位小数）
-func humanSize(n int64) string {
-	const kb, mb, gb = 1 << 10, 1 << 20, 1 << 30
-	switch {
-	case n > gb:
-		return fmt.Sprintf("%.1f GB", float64(n)/gb)
-	case n > mb:
-		return fmt.Sprintf("%.1f MB", float64(n)/mb)
-	case n > kb:
-		return fmt.Sprintf("%.1f KB", float64(n)/kb)
-	default:
-		return fmt.Sprintf("%d B", n)
-	}
 }

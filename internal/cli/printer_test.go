@@ -35,3 +35,46 @@ func TestPrintTableSingleRow(t *testing.T) {
 		t.Errorf("窄列（数据未超表头）也应按表头宽度对齐\n got: %q\nwant: %q", got, want)
 	}
 }
+
+func TestRenderDownloadLine(t *testing.T) {
+	total := int64(15 * 1024 * 1024)
+	got := renderDownloadLine("uv.zip", total/2, total) // 50%
+	if !strings.Contains(got, "uv.zip (7.5 MB/15.0 MB) [") {
+		t.Errorf("50%% 行前缀不符: %q", got)
+	}
+	if !strings.HasSuffix(got, "]  50%") {
+		t.Errorf("50%% 行结尾不符: %q", got)
+	}
+	bar := got[strings.Index(got, "[")+1 : strings.Index(got, "]")]
+	if !strings.Contains(bar, ">") || len(bar) != 30 {
+		t.Errorf("进度条形态不符: %q", bar)
+	}
+
+	got = renderDownloadLine("uv.zip", total, total) // 100%
+	if !strings.HasSuffix(got, "] 100%") || strings.Contains(got, ">") {
+		t.Errorf("100%% 行不符: %q", got)
+	}
+
+	got = renderDownloadLine("uv.zip", 2048, 0) // 总量未知
+	if !strings.HasPrefix(got, "uv.zip (2.0 KB) [") {
+		t.Errorf("未知总量行不符: %q", got)
+	}
+}
+
+func TestHumanSize(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want string
+	}{
+		{512, "512 B"},
+		{1024, "1024 B"}, // scoop filesize 为严格大于：恰好 1KB 仍显示 B
+		{1025, "1.0 KB"},
+		{15 * 1024 * 1024, "15.0 MB"},
+		{int64(1.5 * 1024 * 1024 * 1024), "1.5 GB"},
+	}
+	for _, c := range cases {
+		if got := humanSize(c.in); got != c.want {
+			t.Errorf("humanSize(%d) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

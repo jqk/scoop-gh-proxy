@@ -113,6 +113,55 @@ func printUpdateSummary(plan *scoop.UpdatePlan) {
 }
 
 // ---------------------------------------------------------------------------
+// 下载进度（渲染 scoop.Progress 事件，核心层不生成展示文本）
+// ---------------------------------------------------------------------------
+
+// printDownloadProgress 渲染一行下载进度（样式仿 scoop 自带进度条）
+func printDownloadProgress(p scoop.Progress) {
+	fmt.Println(renderDownloadLine(p.File, p.Downloaded, p.Total))
+}
+
+// renderDownloadLine 渲染一行进度：
+//
+//	uv-x86_64-pc-windows-msvc.zip (6.3 MB/15.0 MB) [===========>                   ]  42%
+func renderDownloadLine(name string, size, total int64) string {
+	const barW = 30
+	pct := 0
+	if total > 0 {
+		pct = int(size * 100 / total)
+		if pct > 100 {
+			pct = 100
+		}
+	}
+	filled := pct * barW / 100
+	bar := strings.Repeat("=", filled)
+	if filled > 0 && filled < barW {
+		bar += ">"
+	}
+	bar += strings.Repeat(" ", barW-len(bar))
+
+	if total > 0 {
+		return fmt.Sprintf("%s (%s/%s) [%s] %3d%%", name, humanSize(size), humanSize(total), bar, pct)
+	}
+	return fmt.Sprintf("%s (%s) [%s]", name, humanSize(size), bar)
+}
+
+// humanSize scoop filesize 的 Go 版（core.ps1：1024 进制，一位小数）
+func humanSize(n int64) string {
+	const kb, mb, gb = 1 << 10, 1 << 20, 1 << 30
+	switch {
+	case n > gb:
+		return fmt.Sprintf("%.1f GB", float64(n)/gb)
+	case n > mb:
+		return fmt.Sprintf("%.1f MB", float64(n)/mb)
+	case n > kb:
+		return fmt.Sprintf("%.1f KB", float64(n)/kb)
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // 共享表格
 // ---------------------------------------------------------------------------
 

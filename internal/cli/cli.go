@@ -136,7 +136,7 @@ func RunUpdate() int {
 			}
 			done++
 			info("[%d/%d] %s", done, total, app.Name)
-			scoop.UpdateProxiedApp(&cfg, app, os.Stdout)
+			scoop.UpdateProxiedApp(&cfg, app, os.Stdout, printDownloadProgress)
 			printAppOutcome(app)
 		}
 

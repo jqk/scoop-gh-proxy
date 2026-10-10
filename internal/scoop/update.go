@@ -84,13 +84,14 @@ func PrepareUpdate(cfg *ScoopConfig) (UpdatePlan, error) {
 // ---------------------------------------------------------------------------
 
 // UpdatePlainApp 更新 Not github 组的 app：直接执行 scoop update <app_name>。
+// w 为 scoop 输出的透传流；onProgress 为结构化下载进度回调（nil = 不需要）。
 // 结果记录在 app.Status（Updated / Update failed）。
 // 保留待用：当前 --update 只更新 Proxied 组，本函数暂无调用方
-func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
+func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress func(Progress)) {
 	if app.Status != NotGitHub {
 		return
 	}
-	dp := newDownloadProgressFor(cfg, w)
+	dp := newDownloadProgressFor(cfg, onProgress)
 	stop := dp.Start()
 	defer stop()
 
@@ -102,9 +103,10 @@ func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 //   - Is github：先把 gh_proxy 前缀写入 manifest，更新后无论成败都还原 manifest
 //   - Proxy set：URL 已带前缀、无备份，直接更新并保持 manifest 原状（由输出层警告）
 //
-// aria2 关闭时由 downloadProgress 自绘下载进度（scoop 检测到输出重定向会关闭自带进度条）。
+// w 为 scoop 输出的透传流（原始字节，展示策略由调用方决定）；
+// onProgress 为结构化下载进度回调（nil = 不需要），核心层不生成任何展示文本。
 // 失败只记录在 app.Status，不中断整体流程
-func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
+func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress func(Progress)) {
 	if app.Status == IsGitHub {
 		if err := setProxiedManifest(app); err != nil {
 			// 备份完成但写入失败时 manifest 缺失，必须把备份还原回去
@@ -117,7 +119,7 @@ func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 		}
 	}
 
-	dp := newDownloadProgressFor(cfg, w)
+	dp := newDownloadProgressFor(cfg, onProgress)
 	stop := dp.Start()
 	defer stop()
 
