@@ -103,10 +103,9 @@ func printUpdateSummary(plan *scoop.UpdatePlan) {
 		}
 		results = append(results, *app)
 	}
-	skipped := len(plan.Skipped)
 
 	fmt.Println()
-	info("Update Summary: %d updated, %d failed, %d skipped", updated, failed, skipped)
+	info("Update Summary: %d updated, %d failed", updated, failed)
 	if len(results) > 0 {
 		printSetTable(results)
 	}
@@ -121,9 +120,11 @@ func printDownloadProgress(p scoop.Progress) {
 	fmt.Println(renderDownloadLine(p.File, p.Downloaded, p.Total))
 }
 
-// renderDownloadLine 渲染一行进度：
+// renderDownloadLine 渲染一行进度（样式仿 scoop 自带进度条）。
+// humanSize 最大 8 字符（"999.9 MB"），右对齐定宽后 "/"、进度条与百分比对齐：
 //
-//	uv-x86_64-pc-windows-msvc.zip (6.3 MB/15.0 MB) [===========>                   ]  42%
+//	bun#1.4.3#88bb33f.zip ( 508.0 KB/ 42.6 MB ) [                              ]   1%
+//	bun#1.4.3#88bb33f.zip (   6.1 MB/ 42.6 MB ) [====>                         ]  14%
 func renderDownloadLine(name string, size, total int64) string {
 	const barW = 30
 	pct := 0
@@ -141,7 +142,7 @@ func renderDownloadLine(name string, size, total int64) string {
 	bar += strings.Repeat(" ", barW-len(bar))
 
 	if total > 0 {
-		return fmt.Sprintf("%s (%s/%s) [%s] %3d%%", name, humanSize(size), humanSize(total), bar, pct)
+		return fmt.Sprintf("%s (%8s/%8s ) [%s] %3d%%", name, humanSize(size), humanSize(total), bar, pct)
 	}
 	return fmt.Sprintf("%s (%s) [%s]", name, humanSize(size), bar)
 }

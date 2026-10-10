@@ -39,7 +39,7 @@ func TestPrintTableSingleRow(t *testing.T) {
 func TestRenderDownloadLine(t *testing.T) {
 	total := int64(15 * 1024 * 1024)
 	got := renderDownloadLine("uv.zip", total/2, total) // 50%
-	if !strings.Contains(got, "uv.zip (7.5 MB/15.0 MB) [") {
+	if !strings.Contains(got, "uv.zip (  7.5 MB/ 15.0 MB ) [") {
 		t.Errorf("50%% 行前缀不符: %q", got)
 	}
 	if !strings.HasSuffix(got, "]  50%") {
@@ -48,6 +48,13 @@ func TestRenderDownloadLine(t *testing.T) {
 	bar := got[strings.Index(got, "[")+1 : strings.Index(got, "]")]
 	if !strings.Contains(bar, ">") || len(bar) != 30 {
 		t.Errorf("进度条形态不符: %q", bar)
+	}
+
+	// 定宽对齐：508KB 与 23.3MB 的 "[" 应在同一列
+	a := renderDownloadLine("f.zip", 508*1024, 15*1024*1024)
+	b := renderDownloadLine("f.zip", 233*1024*1024/10, 15*1024*1024)
+	if strings.Index(a, "[") != strings.Index(b, "[") {
+		t.Errorf("定宽后 [ 应对齐: %q vs %q", a, b)
 	}
 
 	got = renderDownloadLine("uv.zip", total, total) // 100%

@@ -110,7 +110,7 @@ func RunUpdate() int {
 	}
 
 	// 分组明细：status -l 解析出的全部 app 及其归类
-	info("Apps to Update: %d", len(plan.All))
+	info("Apps outdated: %d, to update: %d", len(plan.All), len(plan.Proxied))
 	if len(plan.All) == 0 {
 		return 0
 	}
