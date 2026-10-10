@@ -48,11 +48,6 @@ func (j *jobObject) assign(p *os.Process) error {
 	return windows.AssignProcessToJobObject(j.handle, h)
 }
 
-// terminate 终止 Job Object 中的整棵进程树
-func (j *jobObject) terminate() error {
-	return windows.TerminateJobObject(j.handle, 1)
-}
-
 // close 关闭 Job Object 句柄。KILL_ON_JOB_CLOSE 保证句柄关闭时树内进程被终止
 func (j *jobObject) close() error {
 	return windows.CloseHandle(j.handle)

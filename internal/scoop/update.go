@@ -10,27 +10,64 @@ import (
 // 错误分类
 // ---------------------------------------------------------------------------
 
-// updateErrorMarkers scoop update 输出中判定更新失败的错误标记（大小写不敏感子串）。
-// 取自真实的 scoop / git 报错输出，集中定义便于按实际输出增补
-var updateErrorMarkers = []string{
-	"error",                         // scoop/PowerShell：错误行前缀（如 "ERROR xxx requires admin rights to update"）；scoop 出错时退出码常为 0，只能靠输出判定
-	"exception",                     // PowerShell：未捕获异常（如 WebClient DownloadFile 抛出）
-	"unable to access",              // git：无法访问远端
-	"could not resolve host",        // git：域名解析失败
-	"failed to connect",             // 连接失败
-	"download failed",               // scoop：下载失败
-	"timed out",                     // 连接/下载超时
-	"would be overwritten by merge", // git：本地有未提交改动，与远端冲突
-	"your local changes",            // git：本地文件已改动
-	"not a git repository",          // git：目录不是 git 仓库（桶损坏）
-	"detected dubious ownership",    // git：目录属主可疑
+// updateErrorPrefixes 确定性失败的行首前缀（配合 classifyUpdateLine，已小写、
+// 已剥 "Download: " 前缀）。来源为 scoop 源码（e:\scoop\apps\scoop）：
+//   - "error "           scoop error 助手（core.ps1：Write-Host "ERROR <msg>"，含 app
+//                        pre_uninstall 脚本的权限检查、hash 失败等）
+//   - "error: "          git 的 error: 前缀
+//   - "fatal: "          git 的 fatal: 前缀（无法访问远端、桶损坏等）
+//   - "please try again" new_issue_msg（buckets.ps1，abort 红字无前缀，下载/hash 失败；
+//                        API 限流、SourceForge 提示中的同片段也均在失败语境）
+//   - "exception "       PowerShell 未捕获异常
+var updateErrorPrefixes = []string{
+	"error ",
+	"error: ",
+	"fatal: ",
+	"please try again",
+	"exception ",
 }
 
-// classifyUpdateLine 判断一行（已去 ANSI 的）scoop 输出是否命中错误标记。
-// 命中即判定该 app 更新失败
+// classifyUpdateLine 判断一行（已去 ANSI 的）scoop 输出是否为确定性失败。
+// 只认行首前缀/整句形态，不做宽泛子串匹配：aria2 失败重试的瞬时噪声
+// （errorCode=1、"(ERR):error occurred"、表格 ERR 行）与 WARN 提示
+// （"Download failed!" 后 Fallback 重试）都不是终态——最终成败以成功标志
+// （updateVerdict）为准，本函数的命中只用于失败原因的收集展示
 func classifyUpdateLine(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	lower = strings.TrimPrefix(lower, "download: ") // aria2 输出经 scoop 转发带的行前缀
+
+	if strings.HasPrefix(lower, "warn") { // scoop warn 助手 / PowerShell WARNING：提示性输出，非终态
+		return false
+	}
+	if lower == "running process detected, skip updating." { // scoop-update.ps1：普通输出，无前缀
+		return true
+	}
+	for _, prefix := range updateErrorPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	// 钩子脚本场景：scoop 以 -NoNewline 打印 "Running pre_uninstall script... "，
+	// 脚本内 error 助手的 "ERROR <msg>" 拼接在同一行，只能句中匹配。
+	// 瞬时噪声均为小写无空格形态（errorCode、):error），不会命中
+	return strings.Contains(lower, " error ")
+}
+
+// updateSuccessMarkers scoop update <app> 成功的输出标志（大小写不敏感子串）。
+// 两者都由 scoop 在流程末尾打印，是最终定论；其后可能还有 notes 等输出，不影响判定
+var updateSuccessMarkers = []string{
+	"was installed successfully",                 // install.ps1：安装/更新完成（其后 notes 不定长）
+	"latest versions for all apps are installed", // scoop-update.ps1：已是最新版本，无需更新
+}
+
+// matchUpdateSuccess 判断一行（已去 ANSI 的）scoop 输出是否命中成功标志
+func matchUpdateSuccess(line string) bool {
+	return containsMarker(line, updateSuccessMarkers)
+}
+
+func containsMarker(line string, markers []string) bool {
 	line = strings.ToLower(line)
-	for _, marker := range updateErrorMarkers {
+	for _, marker := range markers {
 		if strings.Contains(line, marker) {
 			return true
 		}
@@ -118,8 +155,8 @@ func UpdatePlainApp(app *OutdatedApp, w io.Writer) {
 	if app.Status != NotGitHub {
 		return
 	}
-	errLines, timedOut, runErr := runScoopStream(w, appUpdateTimeout, "update", app.Name)
-	app.Status = updateVerdict(errLines, timedOut, runErr)
+	_, successSeen, _ := runScoopStream(w, "update", app.Name)
+	app.Status = updateVerdict(successSeen)
 }
 
 // UpdateProxiedApp 更新 proxy 保护罩内的 app：
@@ -140,8 +177,8 @@ func UpdateProxiedApp(app *OutdatedApp, w io.Writer) {
 		}
 	}
 
-	errLines, timedOut, runErr := runScoopStream(w, appUpdateTimeout, "update", app.Name)
-	verdict := updateVerdict(errLines, timedOut, runErr)
+	_, successSeen, _ := runScoopStream(w, "update", app.Name)
+	verdict := updateVerdict(successSeen)
 
 	if app.Status == IsGitHub { // 无论更新成败都还原 manifest
 		_ = restoreProxiedManifest(app) // Status 被覆盖为 RestoreSuccess / RestoreFailed
@@ -153,10 +190,13 @@ func UpdateProxiedApp(app *OutdatedApp, w io.Writer) {
 	app.Status = verdict
 }
 
-// updateVerdict 根据扫描到的错误行、超时与进程退出情况判定更新成败
-func updateVerdict(errLines []string, timedOut bool, runErr error) OutdatedAppStatus {
-	if timedOut || len(errLines) > 0 || runErr != nil {
-		return UpdateFailed
+// updateVerdict 判定更新成败：以成功标志为准。
+// 成功标志（"was installed successfully" / "Latest versions ..."）由 scoop 在流程末尾
+// 打印，是最终定论——即使之前有错误标记命中（可能是瞬时重试或误报），只要最终装上即为成功；
+// 反之未见成功标志一律判失败（scoop 出错时退出码常为 0，错误标记/超时/退出码只能旁证，不能翻案）
+func updateVerdict(successSeen bool) OutdatedAppStatus {
+	if successSeen {
+		return Updated
 	}
-	return Updated
+	return UpdateFailed
 }

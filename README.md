@@ -319,7 +319,7 @@ Is github 组（proxy 保护罩）：
      - 流式执行 scoop update <app_name>（透传显示）
      - 还原该 app 的 manifest（无论成败）
      - Proxy set：URL 已带前缀、无备份，直接更新，保持原状并警告
-     - 失败（输出有错误或超时）：记录 Failed，不中断，继续下一个
+     - 失败（未捕获成功标志）：记录 Failed，不中断，继续下一个
   3. 组结束：restoreScoopProxy 恢复 proxy（任何返回路径都保证先恢复）
         ↓
 输出汇总：成功 / 失败 / 跳过计数 + 明细表
@@ -332,16 +332,15 @@ Is github 组（proxy 保护罩）：
 - 透传：子进程 stdout/stderr 原样实时打印（保留颜色与进度条动画），stdin 接管，用户观感等同直接执行 scoop 命令；工具自身只在前后加少量说明行
 - 扫描：读取侧按行缓冲（\n 切分，兼容 \r），每行去 ANSI 后交给 `classifyUpdateLine` 纯函数判定。错误标记集中在一处定义（大小写不敏感子串匹配），扫描命中即判定该 app 失败：`unable to access`、`could not resolve host`、`failed to connect`、`download failed`、`timed out`、`would be overwritten by merge`、`your local changes`、`not a git repository`、`detected dubious ownership`
 - 进程异常退出（非零退出码）同样判定该 app 失败；未命中错误标记且正常退出才算更新成功
-- 检测到错误行时不提前杀进程：让 scoop 自己的收尾/重试逻辑走完（或超时兜底），结束后统一判定该 app 成败
-- 超时兜底：appUpdateTimeout = 10 分钟（可调。app 下载被杀不会续传，超时太短大文件永远更新不完），超时杀进程树，该 app 判定失败
-- 进程树终止：scoop.cmd 会派生 powershell 子进程，普通 Kill 会留下孤儿进程；用 Job Object（KILL_ON_JOB_CLOSE）绑定子进程，超时或终止时整树结束
+- 检测到错误行时不提前杀进程：让 scoop 自己的收尾/重试逻辑走完，结束后统一判定该 app 成败
+- 无超时：安装包大小与下载速度不可推测，固定超时会误杀正在进行的下载。代价是子进程真挂死时需手动终止；本程序退出（含异常）时由 Job Object 保证子进程树不残留
+- 进程树终止：scoop.cmd 会派生 powershell 子进程，普通 Kill 会留下孤儿进程；用 Job Object（KILL_ON_JOB_CLOSE）绑定子进程，本程序退出时整树结束
 
 `scoop status -l` 保持现有模式：runScoop 捕获输出、解析后按本工具的明细表显示，不做透传。
 
 #### 7.2.4 错误处理策略
 
 - `scoop update <app_name>` 有错误 → 不中断整体流程：还原该 app 的 manifest（Is github 组）、记录 Failed、继续下一个 app_name，直到都执行完
-- 超时 → 同上处理
 - 所有失败在最终汇总中统一显示
 - Proxy set 状态的 app（URL 已带前缀、无备份）：直接更新，保持原状并警告
 

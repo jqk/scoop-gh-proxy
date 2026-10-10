@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"regexp"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -33,18 +32,17 @@ func runScoop(args ...string) (string, error) {
 	return stripAnsi(string(out)), err
 }
 
-// appUpdateTimeout --update 中 scoop update <app> 的超时。
-// app 下载被杀不会续传，超时太短大文件永远更新不完，所以要足够宽松
-const appUpdateTimeout = 10 * time.Minute
-
 // runScoopStream 流式执行 scoop 子命令，供长时间运行的 scoop update 使用：
 //   - 子进程 stdout/stderr 实时写入 w（保留颜色；显示侧只输出有内容的行：分隔符折叠、空行与纯空白行丢弃、行尾空白裁剪，对齐真实终端观感），stdin 接管自 os.Stdin
-//   - 读取侧按行缓冲（\n、\r 切分），每行去 ANSI 后经 classifyUpdateLine 判定，命中的行收集返回
-//   - 超过 timeout 未结束时，通过 Job Object 终止整棵进程树
+//   - 读取侧按行缓冲（\n、\r 切分），每行去 ANSI 后判定：命中错误标记的行收集返回，
+//     命中成功标志（was installed successfully / Latest versions ...）置位 successSeen
 //
-// 返回命中的错误行、是否因超时被终止、进程等待错误。
+// 无超时：安装包大小与下载速度不可推测，固定超时会误杀正在进行的下载。代价是子进程
+// 真挂死时本函数会一直等待（需手动终止）；本程序退出（含异常）时由 Job Object 的
+// KILL_ON_JOB_CLOSE 保证子进程树不残留。
+// 返回命中的错误行、是否见到成功标志、进程等待错误。
 // 检测到错误行时不提前杀进程，让 scoop 自己的收尾/重试逻辑走完
-func runScoopStream(w io.Writer, timeout time.Duration, args ...string) (errLines []string, timedOut bool, runErr error) {
+func runScoopStream(w io.Writer, args ...string) (errLines []string, successSeen bool, runErr error) {
 	cmd := exec.Command("scoop", args...)
 	cmd.Stdin = os.Stdin // scoop 需要确认时可直接应答
 
@@ -59,7 +57,7 @@ func runScoopStream(w io.Writer, timeout time.Duration, args ...string) (errLine
 
 	job, err := newJobObject()
 	if err != nil {
-		job = nil // 没有 Job Object 时退化为只终止直接子进程
+		job = nil // 没有 Job Object 时失去退出时的孤儿清理，不影响正常流程
 	} else {
 		defer job.close() // KILL_ON_JOB_CLOSE：本程序退出时子进程树一并终止
 	}
@@ -68,30 +66,22 @@ func runScoopStream(w io.Writer, timeout time.Duration, args ...string) (errLine
 		return nil, false, err
 	}
 	if job != nil {
-		_ = job.assign(cmd.Process) // 加入失败只是超时退化为终止直接子进程，不影响正常流程
+		_ = job.assign(cmd.Process) // 加入失败只是失去退出时的孤儿清理，不影响正常流程
 	}
 
-	var mu sync.Mutex        // 保护 w 与 errLines：两个管道的读取协程并发回调
-	var timedOutFlag atomic.Bool
-
-	killTree := func() {
-		timedOutFlag.Store(true)
-		if job != nil {
-			_ = job.terminate()
-		} else {
-			_ = cmd.Process.Kill()
-		}
-	}
-	timer := time.AfterFunc(timeout, killTree)
-	defer timer.Stop()
+	var mu sync.Mutex // 保护 w 与 errLines：两个管道的读取协程并发回调
 
 	onLine := func(line string) {
-		if !classifyUpdateLine(line) {
-			return
+		if matchUpdateSuccess(line) {
+			mu.Lock()
+			successSeen = true
+			mu.Unlock()
 		}
-		mu.Lock()
-		errLines = append(errLines, line)
-		mu.Unlock()
+		if classifyUpdateLine(line) {
+			mu.Lock()
+			errLines = append(errLines, line)
+			mu.Unlock()
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -107,9 +97,8 @@ func runScoopStream(w io.Writer, timeout time.Duration, args ...string) (errLine
 
 	wg.Wait()
 	runErr = cmd.Wait()
-	timedOut = timedOutFlag.Load()
 
-	return errLines, timedOut, runErr
+	return errLines, successSeen, runErr
 }
 
 // streamPipe 把 r 的字节实时写入 w（经 mu 加锁，供两个管道协程共用），
