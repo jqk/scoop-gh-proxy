@@ -121,7 +121,8 @@ func RunUpdate() int {
 	done := 0
 
 	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
-	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），退出时由 defer 恢复
+	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），组结束处恢复。
+	// 所有提前 return 都发生在清空之前，无需 defer 兜底
 	if len(plan.Proxied) > 0 {
 		if err := scoop.ClearScoopProxy(&cfg); err != nil {
 			error_("备份并清空 scoop config proxy 失败: %s", err)
