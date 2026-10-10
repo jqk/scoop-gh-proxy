@@ -90,9 +90,9 @@ func validateConfig(cfg *ScoopConfig) error {
 	return nil
 }
 
-// SetScoopProxy set 命令的收尾：把当前 proxy 备份到 gh_scoop_proxy_backup，再清空 proxy。
+// ClearScoopProxy set 命令的收尾：把当前 proxy 备份到 gh_scoop_proxy_backup，再清空 proxy。
 // 成功后同步更新 cfg，保持内存值与 scoop config 一致，后续 RestoreScoopProxy 才能依据内存值判断出"需要恢复"
-func SetScoopProxy(cfg *ScoopConfig) error {
+func ClearScoopProxy(cfg *ScoopConfig) error {
 	if cfg.Proxy != "" {
 		if cfg.Proxy != cfg.GhScoopProxyBackup { // 保存一下，因为后面会清空此值
 			if _, err := runScoop("config", "gh_scoop_proxy_backup", cfg.Proxy); err != nil {

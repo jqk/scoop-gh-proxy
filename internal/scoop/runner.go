@@ -29,7 +29,7 @@ func SetProxyForOutdatedApps(cfg *ScoopConfig, dryRun bool) ([]OutdatedApp, erro
 	}
 
 	if !dryRun && count > 0 {
-		err = SetScoopProxy(cfg)
+		err = ClearScoopProxy(cfg)
 	}
 
 	return apps, err

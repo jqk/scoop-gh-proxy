@@ -102,14 +102,6 @@ func RunUpdate() int {
 		return 1
 	}
 
-	// 任何返回路径（含 panic）都在函数退出时恢复 proxy；
-	// RestoreScoopProxy 幂等，无备份或已恢复时为 no-op
-	defer func() {
-		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
-			error_("恢复 scoop config proxy 失败: %s", err)
-		}
-	}()
-
 	// 遗留还原警告
 	if len(plan.Leftovers) > 0 {
 		warning("发现上次运行遗留的备份，已自动还原: %d", len(plan.Leftovers))
@@ -131,7 +123,7 @@ func RunUpdate() int {
 	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
 	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），退出时由 defer 恢复
 	if len(plan.Proxied) > 0 {
-		if err := scoop.SetScoopProxy(&cfg); err != nil {
+		if err := scoop.ClearScoopProxy(&cfg); err != nil {
 			error_("备份并清空 scoop config proxy 失败: %s", err)
 			return 1
 		}
@@ -145,6 +137,10 @@ func RunUpdate() int {
 			info("[%d/%d] %s", done, total, app.Name)
 			scoop.UpdateProxiedApp(&cfg, app, os.Stdout)
 			printAppOutcome(app)
+		}
+
+		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
+			error_("恢复 scoop config proxy 失败: %s", err)
 		}
 	}
 
