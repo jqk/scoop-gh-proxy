@@ -151,11 +151,15 @@ func cleanupLeftovers(cfg *ScoopConfig) ([]OutdatedApp, error) {
 // UpdatePlainApp 更新 Not github 组的 app：直接执行 scoop update <app_name>。
 // 结果记录在 app.Status（Updated / Update failed）。
 // 保留待用：当前 --update 只更新 Proxied 组，本函数暂无调用方
-func UpdatePlainApp(app *OutdatedApp, w io.Writer) {
+func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 	if app.Status != NotGitHub {
 		return
 	}
-	_, successSeen, _ := runScoopStream(w, "update", app.Name)
+	dp := newDownloadProgressFor(cfg, w)
+	stop := dp.Start()
+	defer stop()
+
+	_, successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
 	app.Status = updateVerdict(successSeen)
 }
 
@@ -163,8 +167,9 @@ func UpdatePlainApp(app *OutdatedApp, w io.Writer) {
 //   - Is github：先把 gh_proxy 前缀写入 manifest，更新后无论成败都还原 manifest
 //   - Proxy set：URL 已带前缀、无备份，直接更新并保持 manifest 原状（由输出层警告）
 //
+// aria2 关闭时由 downloadProgress 自绘下载进度（scoop 检测到输出重定向会关闭自带进度条）。
 // 失败只记录在 app.Status，不中断整体流程
-func UpdateProxiedApp(app *OutdatedApp, w io.Writer) {
+func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer) {
 	if app.Status == IsGitHub {
 		if err := setProxiedManifest(app); err != nil {
 			// 备份完成但写入失败时 manifest 缺失，必须把备份还原回去
@@ -177,7 +182,11 @@ func UpdateProxiedApp(app *OutdatedApp, w io.Writer) {
 		}
 	}
 
-	_, successSeen, _ := runScoopStream(w, "update", app.Name)
+	dp := newDownloadProgressFor(cfg, w)
+	stop := dp.Start()
+	defer stop()
+
+	_, successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
 	verdict := updateVerdict(successSeen)
 
 	if app.Status == IsGitHub { // 无论更新成败都还原 manifest

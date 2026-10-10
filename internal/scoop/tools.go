@@ -40,9 +40,10 @@ func runScoop(args ...string) (string, error) {
 // 无超时：安装包大小与下载速度不可推测，固定超时会误杀正在进行的下载。代价是子进程
 // 真挂死时本函数会一直等待（需手动终止）；本程序退出（含异常）时由 Job Object 的
 // KILL_ON_JOB_CLOSE 保证子进程树不残留。
+// observe（可为 nil）在每行扫描时回调，供调用方捕获行内容（如解析下载总量）。
 // 返回命中的错误行、是否见到成功标志、进程等待错误。
 // 检测到错误行时不提前杀进程，让 scoop 自己的收尾/重试逻辑走完
-func runScoopStream(w io.Writer, args ...string) (errLines []string, successSeen bool, runErr error) {
+func runScoopStream(w io.Writer, observe func(string), args ...string) (errLines []string, successSeen bool, runErr error) {
 	cmd := exec.Command("scoop", args...)
 	cmd.Stdin = os.Stdin // scoop 需要确认时可直接应答
 
@@ -72,6 +73,9 @@ func runScoopStream(w io.Writer, args ...string) (errLines []string, successSeen
 	var mu sync.Mutex // 保护 w 与 errLines：两个管道的读取协程并发回调
 
 	onLine := func(line string) {
+		if observe != nil {
+			observe(line)
+		}
 		if matchUpdateSuccess(line) {
 			mu.Lock()
 			successSeen = true

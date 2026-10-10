@@ -22,17 +22,19 @@ go build -o scoop-gh.exe .   # 直接构建：Version 为 dev、无构建时间
 - `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunHelp / RunVersion），返回退出码；--update 的 proxy 保护罩在此层（PrepareUpdate 成功后 defer 注册 RestoreScoopProxy）
 - `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_/caution/fail）、IsTTY；caution/fail 走 stdout
-- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（SetScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，暂存供下载进度逻辑后续判断）
+- `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（SetScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，控制 --update 的下载进度来源：aria2 用自带 \r 进度流，默认下载器用 downloadProgress 自绘）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
-- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdateProxiedApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、classifyUpdateLine 确定性失败分类（行首前缀/整句）/ matchUpdateSuccess 成功标志表（以成功标志为最终定论）
+- `internal/scoop/update.go` — --update 的核心：PrepareUpdate 准备与分组、UpdateProxiedApp / UpdatePlainApp 逐个更新（UpdatePlainApp 为 Not github 组预留，暂无调用方）、classifyUpdateLine 确定性失败分类（行首前缀/整句）/ matchUpdateSuccess 成功标志表（以成功标志为最终定论）
+- `internal/scoop/download_progress.go` — downloadProgress：aria2 关闭时自绘下载进度（scoop 检测到输出重定向会关闭自带进度条；轮询 cache 的 *.download 临时文件大小，总量从 "Downloading <url> (<size>)..." 行解析；方法 nil-safe，aria2 启用时传 nil）
 - `internal/scoop/exec_kill.go` — Windows Job Object（x/sys/windows）：KILL_ON_JOB_CLOSE 保证本程序退出（含异常）时子进程树一并终止，防孤儿
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（jsontext 流式）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
+- `internal/scoop/download_progress_test.go` — Feed 解析 / renderDownloadLine / humanSize 的单测
 - `internal/scoop/update_test.go` — classifyUpdateLine / matchUpdateSuccess / updateVerdict 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找
-- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描，无超时：错误行收集、成功标志置位；显示侧只输出有内容的行：分隔符折叠（\r+ 及其后至多一个 \n）、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留，对齐真实终端观感）
+- `internal/scoop/tools.go` — stripAnsi、fileExists、runScoop（短超时全量捕获）、runScoopStream（流式透传 + 逐行扫描，无超时，observe 回调供调用方捕获行；错误行收集、成功标志置位；显示侧只输出有内容的行：分隔符折叠（\r+ 及其后至多一个 \n）、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留，对齐真实终端观感）
 
 ## 关键约定
 - Windows only，路径用 `filepath`
