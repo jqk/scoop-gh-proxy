@@ -47,7 +47,8 @@ func TestNilSafeDownloadProgress(t *testing.T) {
 	stop() // 幂等
 }
 
-// TestDownloadProgressTickEmits tick 应把 *.download 文件大小与解析出的总量组装成 Progress 事件
+// TestDownloadProgressTickEmits tick 应把 *.download 文件大小与解析出的总量组装成 Progress 事件。
+// 两拍语义：首拍只记基线，文件增长后的下一拍才上报
 func TestDownloadProgressTickEmits(t *testing.T) {
 	root := t.TempDir()
 	cacheDir := filepath.Join(root, "cache") // 轮询目录是 rootPath 下的 cache 子目录
@@ -58,7 +59,6 @@ func TestDownloadProgressTickEmits(t *testing.T) {
 	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
 	d.mu.Lock()
 	d.total = 1000
-	d.lastAt = time.Now().Add(-time.Hour) // 绕过限频
 	d.mu.Unlock()
 
 	d.tick() // cache 目录为空：不应有事件
@@ -67,28 +67,82 @@ func TestDownloadProgressTickEmits(t *testing.T) {
 	}
 
 	file := filepath.Join(cacheDir, "uv#0.13.0#a48fd9a.zip.download")
-	if err := os.WriteFile(file, make([]byte, 420), 0644); err != nil {
-		t.Fatal(err)
+	resize := func(n int) {
+		if err := os.WriteFile(file, make([]byte, n), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	d.mu.Lock()
-	d.lastAt = time.Now().Add(-time.Hour)
-	d.mu.Unlock()
+	bypass := func() { // 绕过限频
+		d.mu.Lock()
+		d.lastAt = time.Now().Add(-time.Hour)
+		d.mu.Unlock()
+	}
+	resize(420)
+	bypass()
+	d.tick() // 首拍只记基线：不应有事件
+	if len(got) != 0 {
+		t.Fatalf("首拍只记基线不应上报，实际 %v", got)
+	}
 
+	resize(500)
+	bypass()
 	d.tick()
 	if len(got) != 1 {
 		t.Fatalf("期望 1 个事件，实际 %v", got)
 	}
-	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 420, Total: 1000}
+	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 500, Total: 1000}
 	if got[0] != want {
 		t.Errorf("事件不符: got %+v, want %+v", got[0], want)
 	}
 
-	// 百分比未变（42%）时即便绕过限频也不重复上报
-	d.mu.Lock()
-	d.lastAt = time.Now().Add(-time.Hour)
-	d.mu.Unlock()
+	// 整百分比未变（509 仍是 50%）时即便绕过限频也不重复上报
+	resize(509)
+	bypass()
 	d.tick()
 	if len(got) != 1 {
 		t.Errorf("整百分比未变不应重复上报，实际 %v", got)
+	}
+}
+
+// TestDownloadProgressTickIgnoresStaleDownload 陈旧 .download（上次中断下载遗留、
+// 大小不再变化）永不上报。回归：曾在 scoop 输出首行前把遗留半成品当成正在下载
+// 误报一帧（total 未知、lastAt 零值使首拍立即放行），下载完成后同文件还会顶替进来错报
+func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "cache")
+	if err := os.Mkdir(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	var got []Progress
+	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
+	file := filepath.Join(cacheDir, "xpipe#24.6#2c75734.zip.download")
+	if err := os.WriteFile(file, make([]byte, 1<<20), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tick := func() {
+		d.mu.Lock()
+		d.lastAt = time.Now().Add(-time.Hour) // 即便限频形同虚设
+		d.mu.Unlock()
+		d.tick()
+	}
+
+	// 现场一：scoop 尚未输出（total 未知）的启动窗口
+	for i := 0; i < 3; i++ {
+		tick()
+	}
+	if len(got) != 0 {
+		t.Fatalf("total 未知时陈旧文件不应上报，实际 %v", got)
+	}
+
+	// 现场二：Downloading 行已解析（total 已知）后，真实下载完成、陈旧文件顶替进来
+	d.mu.Lock()
+	d.total = 35 * 1024 * 1024
+	d.mu.Unlock()
+	for i := 0; i < 3; i++ {
+		tick()
+	}
+	if len(got) != 0 {
+		t.Fatalf("total 已知时陈旧文件不应上报，实际 %v", got)
 	}
 }

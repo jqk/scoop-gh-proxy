@@ -117,7 +117,7 @@ func RunUpdate() int {
 	printSetTable(plan.All)
 	fmt.Println()
 
-	total := len(plan.All)
+	total := len(plan.Proxied) // 表头分母与循环一致：只数 Proxied 组（Is github / Proxy set）
 	done := 0
 
 	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。

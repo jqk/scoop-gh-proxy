@@ -34,10 +34,12 @@ type downloadProgress struct {
 	onProgress func(Progress)
 	cacheDir   string
 
-	mu      sync.Mutex
-	total   int64     // 总字节数，0 = 未知
-	lastPct int       // 上次上报的整百分比
-	lastAt  time.Time // 上次上报时间（限频）
+	mu       sync.Mutex
+	total    int64     // 总字节数，0 = 未知
+	lastPct  int       // 上次上报的整百分比
+	lastAt   time.Time // 上次上报时间（限频）
+	lastName string    // 上一拍选中的下载文件名
+	lastSize int64     // 上一拍选中时的大小
 }
 
 // "Downloading <url> (15.0 MB)..."（download.ps1:160）。总量为 scoop filesize
@@ -119,6 +121,13 @@ func (d *downloadProgress) tick() {
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// 只跟随正在增长的文件：currentDownload 按 mtime 盲选，上次中断下载遗留的
+	// 陈旧 .download（不再写入）会被误当成正在下载而上报，故同名且变大才继续
+	growing := name == d.lastName && size > d.lastSize
+	d.lastName, d.lastSize = name, size
+	if !growing {
+		return
+	}
 	now := time.Now()
 	if d.total > 0 {
 		pct := int(size * 100 / d.total)
