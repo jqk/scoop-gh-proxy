@@ -74,12 +74,12 @@ func installSpec(app *OutdatedApp) string {
 }
 
 // installVerdict 判定安装成败：与 updateVerdict 相同，以成功标志为最终定论；
-// 命中成功标志记为 Installed（与 update 的 Updated 区分）
+// 命中成功标志记为 Installed（与 update 的 Updated 区分），否则 InstallFailed
 func installVerdict(successSeen bool) OutdatedAppStatus {
 	if successSeen {
 		return Installed
 	}
-	return UpdateFailed
+	return InstallFailed
 }
 
 // InstallApp 在 manifest 保护罩内安装 Is github 的 app：

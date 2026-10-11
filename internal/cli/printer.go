@@ -83,7 +83,7 @@ func printAppOutcome(app *scoop.OutdatedApp) {
 	switch app.Status {
 	case scoop.Updated, scoop.Installed:
 		success("%s: %s", app.Name, app.Status)
-	case scoop.UpdateFailed, scoop.RestoreFailed:
+	case scoop.UpdateFailed, scoop.InstallFailed, scoop.RestoreFailed:
 		fail("%s: %s", app.Name, app.Status)
 	default:
 		caution("%s: %s", app.Name, app.Status) // BackupExists 等未参与更新的状态

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 )
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,30 @@ var updateSuccessMarkers = []string{
 func matchUpdateSuccess(line string) bool {
 	line = strings.ToLower(line)
 	for _, marker := range updateSuccessMarkers {
+		if strings.Contains(line, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// scoopFailureMarkers scoop install/update 失败的输出标志（大小写不敏感子串），
+// 取自 scoop 源码（lib\install.ps1 / lib\download.ps1）：失败时先输出 ERROR 行
+// （abort 型失败随后以退出码 1 结束），另有静默失败（error 后直接 return，退出码 0）。
+// 命中仅用于捕获失败原因行供输出层提示；成败判定仍以成功标志为最终定论
+var scoopFailureMarkers = []string{
+	"download failed",                      // 下载失败（aria2 与默认下载器）：Download failed! (Error N) ...
+	"hash check failed",                    // 哈希校验失败：Hash check failed!
+	"installation aborted",                 // 安装器/安装脚本执行失败：Installation aborted. ...
+	"is not valid",                         // 下载 URL 不可用：ERROR URL <url> is not valid
+	"couldn't find manifest",               // manifest 缺失或损坏（本工具已预检，兜底）
+	"doesn't support current architecture", // 架构不支持（静默失败：error 后直接 return）
+}
+
+// matchScoopFailure 判断一行（已去 ANSI 的）scoop 输出是否命中失败标志
+func matchScoopFailure(line string) bool {
+	line = strings.ToLower(line)
+	for _, marker := range scoopFailureMarkers {
 		if strings.Contains(line, marker) {
 			return true
 		}
@@ -120,15 +145,32 @@ func pickRequestedApps(apps []OutdatedApp, requested []string) (picked []Outdate
 // 逐个更新
 // ---------------------------------------------------------------------------
 
+// runResult 一次 scoop update/install 流式执行的判定摘要
+type runResult struct {
+	successSeen bool   // 是否命中成功标志
+	failureLine string // 最后命中的失败标志行（空 = 未命中），失败时供输出层提示原因
+}
+
 // runScoopForApp 流式执行 scoop <cmd> <spec>：启动下载进度采样、透传输出，
-// 返回是否命中成功标志。update 与 install 共用
-func runScoopForApp(cfg *ScoopConfig, w io.Writer, onProgress func(Progress), cmd, spec string) bool {
+// 逐行扫描成功/失败标志，返回判定摘要。update 与 install 共用
+func runScoopForApp(cfg *ScoopConfig, w io.Writer, onProgress func(Progress), cmd, spec string) runResult {
 	dp := newDownloadProgressFor(cfg, onProgress)
 	stop := dp.Start()
 	defer stop()
 
-	successSeen, _ := runScoopStream(w, dp.Feed, cmd, spec)
-	return successSeen
+	var mu sync.Mutex // 保护 failureLine：两个管道的读取协程并发回调
+	failureLine := ""
+	observe := func(line string) {
+		dp.Feed(line)
+		if matchScoopFailure(line) {
+			mu.Lock()
+			failureLine = line // 记录最后一次命中：最接近真实失败原因
+			mu.Unlock()
+		}
+	}
+
+	successSeen, _ := runScoopStream(w, observe, cmd, spec)
+	return runResult{successSeen: successSeen, failureLine: failureLine}
 }
 
 // proxiedAppCmd 在 manifest 保护罩内执行 scoop <cmd> <spec>：
@@ -146,7 +188,9 @@ func proxiedAppCmd(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress f
 		return
 	}
 
-	v := verdict(runScoopForApp(cfg, w, onProgress, cmd, spec))
+	r := runScoopForApp(cfg, w, onProgress, cmd, spec)
+	app.Failure = r.failureLine // 失败原因行（未命中为空），install 失败时由输出层提示
+	v := verdict(r.successSeen)
 
 	_ = restoreProxiedManifest(app) // Status 被覆盖为 RestoreSuccess / RestoreFailed
 	if app.Status != RestoreSuccess {
@@ -163,7 +207,9 @@ func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress 
 	if app.Status != NotGitHub {
 		return
 	}
-	app.Status = updateVerdict(runScoopForApp(cfg, w, onProgress, "update", app.Name))
+	r := runScoopForApp(cfg, w, onProgress, "update", app.Name)
+	app.Failure = r.failureLine
+	app.Status = updateVerdict(r.successSeen)
 }
 
 // UpdateProxiedApp 更新 proxy 保护罩内的 app：
@@ -179,7 +225,9 @@ func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgres
 		return
 	}
 	// Proxy set：直接执行，manifest 不动
-	app.Status = updateVerdict(runScoopForApp(cfg, w, onProgress, "update", app.Name))
+	r := runScoopForApp(cfg, w, onProgress, "update", app.Name)
+	app.Failure = r.failureLine
+	app.Status = updateVerdict(r.successSeen)
 }
 
 // updateVerdict 判定更新成败：以成功标志为准。

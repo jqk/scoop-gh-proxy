@@ -16,6 +16,7 @@ const (
 	RestoreFailed  OutdatedAppStatus = "Failed"                 // restore：还原失败
 	Updated        OutdatedAppStatus = "Updated"                // update：捕获到成功标志
 	UpdateFailed   OutdatedAppStatus = "Update failed"          // update / install：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底）
+	InstallFailed  OutdatedAppStatus = "Install failed"         // install：未捕获到成功标志（失败时 scoop 输出 ERROR 行并经 abort 以退出码 1 结束，或静默失败退出码 0，如架构不支持——成败只看成功标志）
 	Installed      OutdatedAppStatus = "Installed"              // install：捕获到成功标志
 )
 
@@ -31,6 +32,7 @@ type OutdatedApp struct {
 	Manifest         string            // 本程序的属性：manifest 文件名
 	ManifestBackup   string            // 本程序的属性：manifest 备份文件名
 	Status           OutdatedAppStatus // 本程序的属性：状态值
+	Failure          string            // 本程序的属性：scoop 输出中最后命中的失败标志行（空 = 未命中），失败时供输出层提示原因
 	OriginalManifest []byte            // 本程序的属性：manifest 原始内容
 	Edits            []ManifestEdit    // 本程序的属性：manifest 中待应用的 url 修改清单
 }

@@ -28,8 +28,8 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
 - `internal/scoop/outdated_app.go` — OutdatedApp 与状态枚举定义（set / restore / update / install 共用）
 - `internal/scoop/runner.go` — set / restore 命令主流程（SetProxyForOutdatedApps / RestoreOutdatedAppManifests）；prepareAppManifest 为 set 与 update 共用的定位分析门控
-- `internal/scoop/update.go` — update 的核心：PrepareUpdate 准备与分组（遗留清理复用 RestoreOutdatedAppManifests；requested 点名过滤在 manifest 分析之前，pickRequestedApps 大小写不敏感匹配 + 静默去重，未匹配进 plan.NoUpdate）、UpdateProxiedApp / UpdatePlainApp 逐个更新（参数：透传 writer + Progress 进度回调；UpdatePlainApp 为 Not github 组预留，暂无调用方）、matchUpdateSuccess 成功标志表 + updateVerdict（以成功标志为最终定论）；runScoopForApp（流式执行样板）与 proxiedAppCmd（manifest 保护罩）为 update 与 install 共用
-- `internal/scoop/install.go` — install 的核心：LocateInstallApp 定位与分析 bucket manifest（显式桶先校验 buckets\<bucket> 目录存在；省略桶时逐桶查找取第一个命中并回填 Bucket；已安装预检用 findBucket——scoop 对已安装 app 的 install 只警告且无成功标志；analyzeManifest 复用，分析错误记录在 Status）、InstallApp 保护罩内安装（scoop install <bucket>/<app>，仅 IsGitHub）、installSpec（显式桶请求，保证安装的就是被修改的那份 manifest）/ installVerdict（成功记为 Installed）
+- `internal/scoop/update.go` — update 的核心：PrepareUpdate 准备与分组（遗留清理复用 RestoreOutdatedAppManifests；requested 点名过滤在 manifest 分析之前，pickRequestedApps 大小写不敏感匹配 + 静默去重，未匹配进 plan.NoUpdate）、UpdateProxiedApp / UpdatePlainApp 逐个更新（参数：透传 writer + Progress 进度回调；UpdatePlainApp 为 Not github 组预留，暂无调用方）、matchUpdateSuccess 成功标志表 + scoopFailureMarkers 失败标志表（仅用于捕获失败原因行，不影响判定）+ updateVerdict（以成功标志为最终定论）；runScoopForApp（流式执行样板，返回 runResult：成功标志 + 失败原因行记录到 app.Failure）与 proxiedAppCmd（manifest 保护罩）为 update 与 install 共用
+- `internal/scoop/install.go` — install 的核心：LocateInstallApp 定位与分析 bucket manifest（显式桶先校验 buckets\<bucket> 目录存在；省略桶时逐桶查找取第一个命中并回填 Bucket；已安装预检用 findBucket——scoop 对已安装 app 的 install 只警告且无成功标志；analyzeManifest 复用，分析错误记录在 Status）、InstallApp 保护罩内安装（scoop install <bucket>/<app>，仅 IsGitHub）、installSpec（显式桶请求，保证安装的就是被修改的那份 manifest）/ installVerdict（成功记为 Installed，失败记为 InstallFailed）
 - `internal/scoop/download_progress.go` — downloadProgress：aria2 关闭时轮询 cache 的 *.download 文件产生 Progress 结构化事件（总量从 "Downloading <url> (<size>)..." 行解析；渲染由调用方负责，核心层不生成展示文本；方法 nil-safe，aria2 启用或无回调时传 nil）
 - `internal/scoop/job_object.go` — Windows Job Object（x/sys/windows）：KILL_ON_JOB_CLOSE 保证本程序退出（含异常）时子进程树一并终止，防孤儿
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（analyzeManifest / locateManifestEdits / applyManifestEdits，jsontext 流式；扫描器在 manifest_scanner.go）
@@ -74,7 +74,8 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - `Manifest backup exists` — 备份已存在
 - `Manifest backup failed` — 备份失败
 - `Updated` — update：捕获到成功标志（"was installed successfully" 或 "Latest versions for all apps are installed"）
-- `Update failed` — update / install：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底；错误行随透传直接显示）
+- `Update failed` — update：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底；错误行随透传直接显示）
+- `Install failed` — install：未捕获到成功标志（失败时 scoop 输出 ERROR 行并经 abort 以退出码 1 结束，或静默失败退出码 0，如架构不支持——成败只看成功标志；失败原因行在结果行后提示）
 - `Installed` — install：捕获到成功标志
 
 ## 设计不变量（幂等性，重构或 GUI 化时不得破坏）
@@ -83,7 +84,7 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - proxy 设置与恢复条件对称：set 仅在 Proxy 非空时备份并清空；restore 仅在 GhScoopProxyBackup 非空且 Proxy 为空时恢复（本程序运行期间用户手动设置的其它非空 proxy 不被覆盖）
 - manifest 中未被修改的字节逐字节保留：applyManifestEdits 只做命中区间的替换
 - update 单个 app 失败不中断：失败只记录状态，继续下一个，直到全部执行完
-- update 的成败判定以成功标志为准（updateVerdict）：成功标志（was installed successfully / Latest versions for all apps are installed）由 scoop 在流程末尾打印，是最终定论；未见成功标志一律判失败。错误行不另行收集——随透传直接显示，成败只看成功标志；成功标志表集中在 update.go，取自 scoop 源码（e:\scoop\apps\scoop）与真实输出
+- update 的成败判定以成功标志为准（updateVerdict）：成功标志（was installed successfully / Latest versions for all apps are installed）由 scoop 在流程末尾打印，是最终定论；未见成功标志一律判失败。错误行不另行收集——随透传直接显示，成败只看成功标志；成功标志表集中在 update.go，取自 scoop 源码（e:\scoop\apps\scoop）与真实输出。install 的成败判定同源（installVerdict）：未见成功标志一律判 Install failed；scoopFailureMarkers（download failed / hash check failed / installation aborted / is not valid / couldn't find manifest / doesn't support current architecture）命中的失败原因行记录在 app.Failure 供输出层提示，不影响判定
 - update 的 proxy 保护罩：ClearScoopProxy 成功后进入更新循环，组结束处显式调用 RestoreScoopProxy 恢复；所有提前 return 都发生在 proxy 清空之前，无需 defer。RestoreScoopProxy 幂等（无备份或已恢复时为 no-op）；panic 等异常路径不恢复，遗留状态由下次运行开工前的遗留清理自愈
 - update 的逐 app 提示行（[n/m] 表头、Proxy set 警告、更新结果）与 scoop 流式输出同写 stdout（caution/fail），保证先后顺序不被 stderr 合并打乱；error_/warning 走 stderr，仅用于不与流式输出交错的独立消息（配置错误、收尾恢复失败、点名未匹配提示等）
 - update 开工前先清理遗留：自动还原上次运行遗留的备份与 proxy（复用 RestoreOutdatedAppManifests），保证从干净状态开始（恢复的 proxy 已同步到内存 cfg，无需二次 GetScoopConfig）
@@ -105,7 +106,7 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - manifest 的只读定位与 backup 的只读扫描均为纯查询，set、restore、status、update 四条命令共用同一实现；
   是否落盘仅由命令层决定（set/update 的 dryRun 或落盘步骤），核心层不打印、不退出、不调用 os.Exit
 - prepareAppManifest（定位 bucket + 分析 manifest）为 SetProxyForOutdatedApps 与 PrepareUpdate 共用
-- update / install 的流式输出由注入的 io.Writer 决定（CLI 传 os.Stdout，将来 GUI 可传自己的 writer）；成功标志表集中在 update.go 的 updateSuccessMarkers；manifest 保护罩（proxiedAppCmd）与流式执行（runScoopForApp）为两者共用
+- update / install 的流式输出由注入的 io.Writer 决定（CLI 传 os.Stdout，将来 GUI 可传自己的 writer）；成功/失败标志表集中在 update.go（updateSuccessMarkers / scoopFailureMarkers）；manifest 保护罩（proxiedAppCmd）与流式执行（runScoopForApp）为两者共用
 
 ## 编译验证
 ```

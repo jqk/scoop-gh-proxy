@@ -254,6 +254,11 @@ func RunInstall(args []string) int {
 	}
 
 	printAppOutcome(&rec)
+	if rec.Status == scoop.InstallFailed && rec.Failure != "" {
+		// 流式输出中最后命中的失败标志行（ERROR Download failed! / Hash check failed! 等），
+		// 作为失败原因摘要跟在结果行后；走 stdout 与结果行同流保序
+		fail("失败原因: %s", rec.Failure)
+	}
 	if rec.Status != scoop.Installed {
 		return 1
 	}

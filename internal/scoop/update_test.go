@@ -70,6 +70,39 @@ func TestUpdateVerdict(t *testing.T) {
 	}
 }
 
+// TestMatchScoopFailure 失败标志行样例取自 scoop 源码（lib\install.ps1 / lib\download.ps1）
+// 与真实输出：命中仅用于捕获失败原因，成败判定不受影响
+func TestMatchScoopFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"下载失败（aria2 回退关闭）", "ERROR Download failed! (Error 1) An unknown error occurred", true},
+		{"下载失败（aria2 回退前的 WARN 瞬时行）", "WARN  Download failed! (Error 1) An unknown error occurred", true},
+		{"哈希校验失败", "Hash check failed!", true},
+		{"安装器执行失败", "Installation aborted. You might need to run 'scoop uninstall git' before trying again.", true},
+		{"URL 不可用", "ERROR URL https://example.com/x.zip is not valid", true},
+		{"manifest 缺失", "ERROR Couldn't find manifest for 'git'.", true},
+		{"架构不支持（静默失败）", "'git' doesn't support current architecture!", true},
+		{"普通安装行", "Installing 'git' (2.56.0) [64bit] from 'main' bucket", false},
+		{"下载进度行", "Downloading https://example.com/x.zip (15.0 MB)...", false},
+		{"哈希校验通过", "Checking hash of x.zip... OK.", false},
+		{"安装成功行", "'uv' (0.13.0) was installed successfully!", false},
+		{"已是最新版本行", "Latest versions for all apps are installed! For more information try 'scoop status'", false},
+		{"aria2 瞬时错误行", "Download: fa35c7|ERR |       0B/s|E:/Scoop/cache/uv#0.13.0#a48fd9c.zip", false},
+		{"回退提示行", "Fallback to default downloader...", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchScoopFailure(tt.line); got != tt.want {
+				t.Errorf("matchScoopFailure(%q) = %v, want %v", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPickRequestedApps 点名匹配：大小写不敏感、静默去重（保留首现顺序）、
 // 同名 outdated 行只取第一行、未匹配的点名原样归入 noUpdate
 func TestPickRequestedApps(t *testing.T) {

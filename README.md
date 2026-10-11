@@ -178,7 +178,7 @@ uv          extras      Failed
 - `Is github`：进入保护罩安装——备份并清空 scoop config 的 proxy → 把 gh_proxy 前缀写入该 app 的 bucket manifest → 流式执行 `scoop install <bucket>/<app>`（实时透传显示）→ 无论安装成败都还原 manifest → 恢复 proxy。
 - 其它状态（`Proxy set` / `Manifest error` 等）：报错退出（退出码 1）。
 
-安装成败以 scoop 的成功标志为准（与 update 相同的判定规则），结果行显示 `Installed`（绿色）或 `Update failed` / `Restore failed`（红色）。
+安装成败以 scoop 的成功标志为准（与 update 相同的判定规则），结果行显示 `Installed`（绿色）或 `Install failed` / `Restore failed`（红色）；失败时在其后输出失败原因行（scoop 输出中最后命中的失败标志，如 `ERROR Download failed! ...`、`Hash check failed!`）。
 
 退出码：0 = Not github 提示或安装成功；1 = 参数/配置错误、已安装、bucket 或 app 不存在、状态不允许、proxy 清空失败、安装未成功。
 

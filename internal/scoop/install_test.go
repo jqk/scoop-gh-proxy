@@ -100,7 +100,7 @@ func TestInstallVerdict(t *testing.T) {
 	if got := installVerdict(true); got != Installed {
 		t.Errorf("installVerdict(true) = %v, want Installed", got)
 	}
-	if got := installVerdict(false); got != UpdateFailed {
-		t.Errorf("installVerdict(false) = %v, want UpdateFailed", got)
+	if got := installVerdict(false); got != InstallFailed {
+		t.Errorf("installVerdict(false) = %v, want InstallFailed", got)
 	}
 }
