@@ -18,20 +18,20 @@ func main() {
 
 	var code int
 	switch os.Args[1] {
-	case "--set":
+	case "set":
 		code = cli.RunSet(false)
-	case "--restore":
+	case "restore":
 		code = cli.RunRestore(false)
-	case "--status":
+	case "status":
 		code = cli.RunStatus()
-	case "--update":
-		code = cli.RunUpdate()
-	case "--help", "-h":
+	case "update":
+		code = cli.RunUpdate(os.Args[2:])
+	case "help":
 		code = cli.RunHelp()
-	case "--version", "-v":
+	case "version":
 		code = cli.RunVersion()
 	default:
-		color.Red("未知参数: %s\n", os.Args[1])
+		color.Red("未知命令: %s\n", os.Args[1])
 		cli.RunHelp()
 		code = 1
 	}

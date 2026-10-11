@@ -12,9 +12,9 @@
             "mode": "debug",
             "program": "${workspaceFolder}",
             "args": [
-                // "--status",
-                // "--set",
-                "--restore",
+                // "status",
+                // "set",
+                "restore",
             ],
         }
     ]

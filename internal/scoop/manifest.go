@@ -19,7 +19,7 @@ type ManifestEdit struct {
 
 // prepareAppManifest 定位 app 的 manifest 并分析其中的 GitHub URL。
 // 返回 true 表示存在待修改的 GitHub URL（Status 为 IsGitHub），可继续执行代理设置；
-// 其余情况返回 false，具体状态记录在 app.Status。--set 与 --update 共用
+// 其余情况返回 false，具体状态记录在 app.Status。set 与 update 共用
 func prepareAppManifest(cfg *ScoopConfig, app *OutdatedApp) bool {
 	if app.Status != Unknown {
 		return false // 只处理刚刚初始化，没有被处理过的

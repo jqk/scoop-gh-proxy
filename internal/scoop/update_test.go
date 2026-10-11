@@ -69,3 +69,60 @@ func TestUpdateVerdict(t *testing.T) {
 		t.Errorf("updateVerdict(false) = %v, want UpdateFailed", got)
 	}
 }
+
+// TestPickRequestedApps 点名匹配：大小写不敏感、静默去重（保留首现顺序）、
+// 同名 outdated 行只取第一行、未匹配的点名原样归入 noUpdate
+func TestPickRequestedApps(t *testing.T) {
+	apps := []OutdatedApp{
+		{Name: "git"},
+		{Name: "nodejs"},
+		{Name: "Alma"},
+	}
+
+	tests := []struct {
+		name         string
+		requested    []string
+		wantPicked   []string // picked 中的 Name 序列；nil 或空均表示应为空
+		wantNoUpdate []string // noUpdate 序列；nil 或空均表示应为空
+	}{
+		{"空参数", nil, nil, nil},
+		{"精确匹配", []string{"git"}, []string{"git"}, nil},
+		{"大小写不敏感", []string{"GIT"}, []string{"git"}, nil},
+		{"保持点名顺序", []string{"Alma", "git"}, []string{"Alma", "git"}, nil},
+		{"静默去重（保留首现）", []string{"git", "GIT", "git"}, []string{"git"}, nil},
+		{"去重后保持首现顺序", []string{"nodejs", "git", "NODEJS"}, []string{"nodejs", "git"}, nil},
+		{"未匹配", []string{"foo"}, nil, []string{"foo"}},
+		{"未匹配记录输入原样", []string{"FOO", "Bar"}, nil, []string{"FOO", "Bar"}},
+		{"混合", []string{"foo", "nodejs", "bar", "git", "NODEJS"}, []string{"nodejs", "git"}, []string{"foo", "bar"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			picked, noUpdate := pickRequestedApps(apps, tt.requested)
+
+			gotPicked := make([]string, 0, len(picked))
+			for _, app := range picked {
+				gotPicked = append(gotPicked, app.Name)
+			}
+			if !equalStrings(gotPicked, tt.wantPicked) {
+				t.Errorf("picked = %v, want %v", gotPicked, tt.wantPicked)
+			}
+			if !equalStrings(noUpdate, tt.wantNoUpdate) {
+				t.Errorf("noUpdate = %v, want %v", noUpdate, tt.wantNoUpdate)
+			}
+		})
+	}
+}
+
+// equalStrings 逐元素比较（nil 与空切片视为相同）
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

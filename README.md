@@ -25,13 +25,14 @@
 ## 三、 CLI 设计
 
 ```bash
-scoop-gh-proxy --set
-scoop-gh-proxy --restore
-scoop-gh-proxy --status
+scoop-gh-proxy set
+scoop-gh-proxy restore
+scoop-gh-proxy status
+scoop-gh-proxy update [app...]   # update / update * 更新全部 outdated；点名时只更新指定的 app
 
 # 如果没有参数，就相当于 help
-scoop-gh-proxy --help
-scoop-gh-proxy --version
+scoop-gh-proxy help
+scoop-gh-proxy version
 ```
 
 对于 `set` 和 `restore` 命令，基本执行顺序是：
@@ -262,11 +263,11 @@ scoop-gh-proxy/
 
 ### 7.1 基本思路
 
-1. 现在已经实现了 `--set` `--restore` `--status` 三个基本功能。在此 3 个功能的基础上，需要进一步自动化 scoop 软件更新
+1. 现在已经实现了 `set` `restore` `status` 三个基本功能。在此 3 个功能的基础上，需要进一步自动化 scoop 软件更新
 2. 理想化的执行步骤：
 
    - 执行 `scoop update` 命令，更新本地桶
-   - scoop status -l，这个可以用已经实现的 --status 功能
+   - scoop status -l，这个可以用已经实现的 status 功能
    - 拿到 apps 后，将其分为三组：
      - `skipped` 或有错误的，这些不处理，直接跳过，当然要显示一下
      - `NotGithub`：这些直接逐条执行 `scoop update <app_name>`
@@ -281,14 +282,14 @@ scoop-gh-proxy/
    - 网络有问题，例如下载失败。出现这样的问题就停止并显示信息。
    - git 状态有问题，例如有某些本地文件改动了，与远程不同步。当前的任务跳过，继续执行下一任务。
 
-### 7.2 执行计划（新增 `--update` 命令）
+### 7.2 执行计划（新增 `update` 命令）
 
 在 7.1 基本思路的基础上，确定的执行方案如下。
 
 #### 7.2.1 命令入口
 
 ```bash
-scoop-gh-proxy --update
+scoop-gh-proxy update
 ```
 
 #### 7.2.2 总体流程
@@ -301,7 +302,7 @@ scoop-gh-proxy --update
 清理遗留状态：
 扫描遗留的 [app]-gh-backup.json 备份与被备份清空的 proxy，
 自动还原并输出警告明细，随后重新获取 scoop config 刷新快照，
-保证 --update 总是从干净状态开始
+保证 update 总是从干净状态开始
         ↓
 执行 scoop status -l（不透传原始输出，按本工具的明细表格式显示），
 将 outdated apps 分为三组：
@@ -352,10 +353,10 @@ Is github 组（proxy 保护罩）：
 | `internal/scoop/exec_kill.go`（新增） | Job Object 进程树终止（golang.org/x/sys/windows 转为直接依赖） |
 | `internal/scoop/update_test.go`（新增） | classifyUpdateLine 表驱动单测 |
 | `internal/scoop/update.go`（新增） | PrepareUpdate：遗留清理 + status 分组（UpdatePlan）；UpdatePlainApp / UpdateProxiedApp：逐个更新；BeginProxyPhase / EndProxyPhase：proxy 保护罩；classifyUpdateLine 纯函数 + 错误标记表 |
-| `internal/scoop/runner.go` | 抽取「定位 bucket + 分析 manifest」门控为 prepareAppManifest，批量 set 与 --update 共用；批量行为不变 |
+| `internal/scoop/runner.go` | 抽取「定位 bucket + 分析 manifest」门控为 prepareAppManifest，批量 set 与 update 共用；批量行为不变 |
 | 复用不改签名 | setProxiedManifest / restoreProxiedManifest / setScoopProxy / restoreScoopProxy / getOutdatedApps / findProxiedManifests |
 | `internal/cli/update.go`（新增） | RunUpdate：os.Stdout 作为 progress writer 传入核心层；输出遗留还原警告、分组明细、逐 app 进度行、最终汇总；错误输出 + 退出码。printRestoreTable 抽取自 cli.go 供遗留警告复用 |
-| `main.go` | --update 分发；更新 printUsage |
+| `main.go` | update 子命令分发（含 app 参数）；更新 printUsage |
 | `README.md` 第七节、`AGENTS.md` | 实现完成后同步最终设计 |
 
 分层约定不破坏：核心层不直接打印——透传目标由注入的 `io.Writer` 决定（CLI 传 os.Stdout，将来 GUI 传自己的 writer）；核心层不 os.Exit，退出码由 cli 层决定。
@@ -373,3 +374,13 @@ Is github 组（proxy 保护罩）：
   - 正常全流程
   - 单个 app 更新失败，验证「还原 manifest → 继续下一个 → 直到全部执行完 → 最终汇总」
   - 重复执行验证幂等
+
+### 7.3 `update <app...>`（点名更新）
+
+在 `update` 的基础上支持指定 app：`scoop-gh-proxy update app1 app2 app3`（一个或多个）。仍先执行 `scoop status -l`，再把点名与 outdated 列表对比：
+
+- 点名匹配不区分大小写（与 Windows / scoop 习惯一致）；重复点名静默去重——保留首次出现的顺序，不输出任何说明（如点名为 `git GIT git`，实际只更新一次）
+- 未匹配的点名（不在 outdated 列表中，已最新或未安装）：先提示「以下 app 不在 outdated 列表中，没有可用的更新: N」，再逐行列出（带两位右对齐序号，1-9 前补空格），不进明细表与汇总
+- 匹配到的行进入与全量 `update` 完全相同的流程：分组后 Skipped / Not github 仅显示不更新，Is github / Proxy set 进 proxy 保护罩逐个更新，最后汇总
+- 点名中混入 `*`（如 `update app1 app2 * app3`）：提示「参数中有 * 号，忽略指定的 app 名称，按 update * 处理」，按全量更新执行；仅 `update *` 不提示
+- `update *` 与 `update` 等价（全量更新）；退出码语义与 `update` 相同

@@ -19,14 +19,13 @@ func printUsage() {
 	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", version))
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  scoop-gh --set      将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
-	fmt.Println("  scoop-gh --restore  还原已备份的原始 [app].json")
-	fmt.Println("  scoop-gh --status   预览将要还原/修改的明细（不实际修改）")
-	fmt.Println("  scoop-gh --update   自动更新所有 outdated 的软件")
+	fmt.Println("  scoop-gh set              将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
+	fmt.Println("  scoop-gh restore          还原已备份的原始 [app].json")
+	fmt.Println("  scoop-gh status           预览将要还原/修改的明细（不实际修改）")
+	fmt.Println("  scoop-gh update [app...]  自动更新所有 outdated 的软件；指定 app 时只更新指定的 app")
 	fmt.Println()
-	fmt.Println("选项:")
-	fmt.Println("  -h, --help     显示帮助")
-	fmt.Println("  -v, --version  显示版本")
+	fmt.Println("  scoop-gh help             显示帮助")
+	fmt.Println("  scoop-gh version          显示版本")
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +63,7 @@ func printRestoreSummary(items []scoop.OutdatedApp, showStatus bool) {
 	printTable(os.Stdout, []string{"App Name", "Bucket Name"}, rows, nil)
 }
 
-// printRestoreTable 输出带 Status 列的三列明细表（restore 与 --update 的遗留清理共用）
+// printRestoreTable 输出带 Status 列的三列明细表（restore 与 update 的遗留清理共用）
 func printRestoreTable(items []scoop.OutdatedApp) {
 	rows := make([][]string, 0, len(items))
 	for _, it := range items {

@@ -39,7 +39,7 @@ func error_(format string, args ...any) {
 }
 
 // caution 注意：黄色，写 stdout。
-// --update 逐 app 的提示行与 scoop 流式输出同写 stdout，保证先后顺序——
+// update 逐 app 的提示行与 scoop 流式输出同写 stdout，保证先后顺序——
 // warning 走 stderr，输出重定向（如 PowerShell 2>&1）合并时可能乱序
 func caution(format string, args ...any) {
 	c := color.New(color.FgYellow)
