@@ -19,13 +19,14 @@ func printUsage() {
 	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", version))
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  scoop-gh set              将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
-	fmt.Println("  scoop-gh restore          还原已备份的原始 [app].json")
-	fmt.Println("  scoop-gh status           预览将要还原/修改的明细（不实际修改）")
-	fmt.Println("  scoop-gh update [app...]  自动更新所有 outdated 的软件；指定 app 时只更新指定的 app")
+	fmt.Println("  scoop-gh set                 将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
+	fmt.Println("  scoop-gh restore             还原已备份的原始 [app].json")
+	fmt.Println("  scoop-gh status              预览将要还原/修改的明细（不实际修改）")
+	fmt.Println("  scoop-gh update [app...]     自动更新所有 outdated 的软件；指定 app 时只更新指定的 app")
+	fmt.Println("  scoop-gh install <bucket/app>  安装指定的 app（bucket 可省略）；Is github 的 app 自动应用 gh_proxy")
 	fmt.Println()
-	fmt.Println("  scoop-gh help             显示帮助")
-	fmt.Println("  scoop-gh version          显示版本")
+	fmt.Println("  scoop-gh help                显示帮助")
+	fmt.Println("  scoop-gh version             显示版本")
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ func printRestoreTable(items []scoop.OutdatedApp) {
 // printAppOutcome 输出单个 app 的更新结果行（走 stdout，与 scoop 流式输出同流保序）
 func printAppOutcome(app *scoop.OutdatedApp) {
 	switch app.Status {
-	case scoop.Updated:
+	case scoop.Updated, scoop.Installed:
 		success("%s: %s", app.Name, app.Status)
 	case scoop.UpdateFailed, scoop.RestoreFailed:
 		fail("%s: %s", app.Name, app.Status)

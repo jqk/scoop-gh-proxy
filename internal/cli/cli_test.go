@@ -36,3 +36,40 @@ func TestRequestedApps(t *testing.T) {
 		})
 	}
 }
+
+// TestParseInstallArg parseInstallArg：<bucket/app>（bucket 可省略）；
+// app 不允许为空或包含 /
+func TestParseInstallArg(t *testing.T) {
+	tests := []struct {
+		name    string
+		arg     string
+		bucket  string
+		app     string
+		wantErr bool
+	}{
+		{"指定桶", "extras/vscode", "extras", "vscode", false},
+		{"省略桶", "vscode", "", "vscode", false},
+		{"空参数", "", "", "", true},
+		{"空桶", "/vscode", "", "", true},
+		{"空 app", "extras/", "", "", true},
+		{"app 含 /", "extras/a/b", "", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bucket, app, err := parseInstallArg(tt.arg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("parseInstallArg(%q) 应报错, got bucket=%q app=%q", tt.arg, bucket, app)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseInstallArg(%q) 意外出错: %v", tt.arg, err)
+			}
+			if bucket != tt.bucket || app != tt.app {
+				t.Errorf("parseInstallArg(%q) = (%q, %q), want (%q, %q)", tt.arg, bucket, app, tt.bucket, tt.app)
+			}
+		})
+	}
+}

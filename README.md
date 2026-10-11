@@ -28,7 +28,8 @@
 scoop-gh-proxy set
 scoop-gh-proxy restore
 scoop-gh-proxy status
-scoop-gh-proxy update [app...]   # update / update * 更新全部 outdated；点名时只更新指定的 app
+scoop-gh-proxy update [app...]       # update / update * 更新全部 outdated；点名时只更新指定的 app
+scoop-gh-proxy install <bucket/app>  # 安装指定的 app，bucket 可省略
 
 # 如果没有参数，就相当于 help
 scoop-gh-proxy help
@@ -161,6 +162,25 @@ uv          extras      Failed
 ### 4.3 status 命令
 
 先执行 restore 命令，后执行 set 命令，只不过不真正修改任何文件，只是输出要变更的明细。输出内容参见这两个命令。
+
+### 4.4 install 命令
+
+安装指定 app：`scoop-gh-proxy install <bucket/app>`，bucket 可省略。
+
+- 显式指定 bucket 时，先校验 `buckets\<bucket>` 目录是否存在，不存在报错退出。
+- 省略 bucket 时，在 `buckets` 下逐个桶查找 manifest，取第一个命中的桶并输出桶名；全部未找到报错退出。
+- 定位 manifest 的方式与 set/update 相同：先查桶根目录，再查 `bucket` 子目录（支持多级目录嵌套），大小写不敏感。
+- app 已安装时报错退出（scoop 对已安装 app 的 install 只警告不安装，无法判定成败），如需更新请执行 `update <app>`。
+
+分析 manifest 中的下载 url 后按状态处理（规则与 set 相同）：
+
+- `Not github`：无 github 下载链接，本工具无用武之地——提示直接执行 `scoop install <bucket/app>` 后退出（退出码 0）。
+- `Is github`：进入保护罩安装——备份并清空 scoop config 的 proxy → 把 gh_proxy 前缀写入该 app 的 bucket manifest → 流式执行 `scoop install <bucket>/<app>`（实时透传显示）→ 无论安装成败都还原 manifest → 恢复 proxy。
+- 其它状态（`Proxy set` / `Manifest error` 等）：报错退出（退出码 1）。
+
+安装成败以 scoop 的成功标志为准（与 update 相同的判定规则），结果行显示 `Installed`（绿色）或 `Update failed` / `Restore failed`（红色）。
+
+退出码：0 = Not github 提示或安装成功；1 = 参数/配置错误、已安装、bucket 或 app 不存在、状态不允许、proxy 清空失败、安装未成功。
 
 ## 五、 获取并校验 scoop config 信息
 

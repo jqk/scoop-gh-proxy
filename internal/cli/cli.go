@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
@@ -174,6 +176,87 @@ func RunUpdate(args []string) int {
 	}
 
 	printUpdateSummary(&plan)
+	return 0
+}
+
+// ---------------------------------------------------------------------------
+// install（单 app 安装：定位 bucket manifest → 状态门控 → Is github 保护罩内安装 → 恢复）
+// ---------------------------------------------------------------------------
+
+// parseInstallArg 解析 install 参数：<bucket/app>，bucket 可省略（省略时为 <app>）。
+// app 不允许为空或包含 /
+func parseInstallArg(arg string) (bucket, app string, err error) {
+	b, a, ok := strings.Cut(arg, "/")
+	if !ok { // 无 /：bucket 省略
+		if arg == "" {
+			return "", "", errors.New("缺少 app 名称")
+		}
+		return "", arg, nil
+	}
+	if b == "" || a == "" || strings.Contains(a, "/") {
+		return "", "", fmt.Errorf("参数格式错误: %q（应为 <bucket/app>，bucket 可省略）", arg)
+	}
+	return b, a, nil
+}
+
+// RunInstall install <bucket/app>：定位 bucket manifest 并分析状态。
+// Not github 提示直接用 scoop install；Is github 在保护罩内安装
+// （gh_proxy 前缀 + 清空 proxy，结束后无论成败都恢复）；其它状态报错。
+// 返回退出码：1 = 配置/参数错误、已安装、bucket 或 app 不存在、状态不允许、
+// proxy 清空失败、安装未成功（未捕获成功标志或还原失败）
+func RunInstall(args []string) int {
+	if len(args) != 1 {
+		error_("用法: scoop-gh install <bucket/app>（bucket 可省略）")
+		return 1
+	}
+	bucket, app, err := parseInstallArg(args[0])
+	if err != nil {
+		error_("%s", err)
+		return 1
+	}
+
+	cfg, code := loadConfig()
+	if code != 0 {
+		return code
+	}
+
+	rec, err := scoop.LocateInstallApp(&cfg, bucket, app)
+	if err != nil {
+		error_("%s", err)
+		return 1
+	}
+	spec := rec.Bucket + "/" + rec.Name
+	if bucket == "" {
+		info("已定位到 bucket: %s", rec.Bucket) // 省略桶名时输出实际命中的桶
+	}
+
+	switch rec.Status {
+	case scoop.NotGitHub:
+		// 无 github 下载链接，本工具无用武之地
+		info("%s: Not github，无需本工具处理，直接执行: scoop install %s", spec, spec)
+		return 0
+	case scoop.IsGitHub:
+		info("%s: Is github，安装期间临时应用 gh_proxy 前缀，结束后还原", spec)
+
+		// 保护罩：安装前清空 proxy（备份到 gh_scoop_proxy_backup），结束后恢复。
+		// 所有提前 return 都发生在清空之前，无需 defer 兜底
+		if err := scoop.ClearScoopProxy(&cfg); err != nil {
+			error_("备份并清空 scoop config proxy 失败: %s", err)
+			return 1
+		}
+		scoop.InstallApp(&cfg, &rec, os.Stdout, printDownloadProgress)
+		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
+			error_("恢复 scoop config proxy 失败: %s", err)
+		}
+	default:
+		error_("%s: %s，无法安装", spec, rec.Status)
+		return 1
+	}
+
+	printAppOutcome(&rec)
+	if rec.Status != scoop.Installed {
+		return 1
+	}
 	return 0
 }
 

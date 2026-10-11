@@ -26,6 +26,8 @@ func main() {
 		code = cli.RunStatus()
 	case "update":
 		code = cli.RunUpdate(os.Args[2:])
+	case "install":
+		code = cli.RunInstall(os.Args[2:])
 	case "help":
 		code = cli.RunHelp()
 	case "version":

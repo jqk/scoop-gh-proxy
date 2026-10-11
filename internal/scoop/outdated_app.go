@@ -15,7 +15,8 @@ const (
 	RestoreSuccess OutdatedAppStatus = "Success"                // restore：还原成功
 	RestoreFailed  OutdatedAppStatus = "Failed"                 // restore：还原失败
 	Updated        OutdatedAppStatus = "Updated"                // update：捕获到成功标志
-	UpdateFailed   OutdatedAppStatus = "Update failed"          // update：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底）
+	UpdateFailed   OutdatedAppStatus = "Update failed"          // update / install：未捕获到成功标志（scoop 出错时退出码常为 0，不能靠退出码兜底）
+	Installed      OutdatedAppStatus = "Installed"              // install：捕获到成功标志
 )
 
 // OutdatedApp 对应 scoop status -l 中一行 app 记录，还附加有本程序使用的属性。

@@ -120,6 +120,41 @@ func pickRequestedApps(apps []OutdatedApp, requested []string) (picked []Outdate
 // 逐个更新
 // ---------------------------------------------------------------------------
 
+// runScoopForApp 流式执行 scoop <cmd> <spec>：启动下载进度采样、透传输出，
+// 返回是否命中成功标志。update 与 install 共用
+func runScoopForApp(cfg *ScoopConfig, w io.Writer, onProgress func(Progress), cmd, spec string) bool {
+	dp := newDownloadProgressFor(cfg, onProgress)
+	stop := dp.Start()
+	defer stop()
+
+	successSeen, _ := runScoopStream(w, dp.Feed, cmd, spec)
+	return successSeen
+}
+
+// proxiedAppCmd 在 manifest 保护罩内执行 scoop <cmd> <spec>：
+// 先把 gh_proxy 前缀写入 manifest，结束后无论成败都还原 manifest。
+// verdict 决定成功标志命中时的结果状态（update 为 Updated，install 为 Installed）；
+// 还原失败意味着 manifest 仍处于已修改状态，优先展示为 RestoreFailed
+func proxiedAppCmd(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress func(Progress), cmd, spec string, verdict func(bool) OutdatedAppStatus) {
+	if err := setProxiedManifest(app); err != nil {
+		// 备份完成但写入失败时 manifest 缺失，必须把备份还原回去
+		_ = restoreProxiedManifest(app)
+		app.Status = ManifestError
+		return
+	}
+	if app.Status != IsGitHub { // BackupExists 等状态：无法安全执行，跳过
+		return
+	}
+
+	v := verdict(runScoopForApp(cfg, w, onProgress, cmd, spec))
+
+	_ = restoreProxiedManifest(app) // Status 被覆盖为 RestoreSuccess / RestoreFailed
+	if app.Status != RestoreSuccess {
+		v = RestoreFailed // 还原失败优先展示
+	}
+	app.Status = v
+}
+
 // UpdatePlainApp 更新 Not github 组的 app：直接执行 scoop update <app_name>。
 // w 为 scoop 输出的透传流；onProgress 为结构化下载进度回调（nil = 不需要）。
 // 结果记录在 app.Status（Updated / Update failed）。
@@ -128,12 +163,7 @@ func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress 
 	if app.Status != NotGitHub {
 		return
 	}
-	dp := newDownloadProgressFor(cfg, onProgress)
-	stop := dp.Start()
-	defer stop()
-
-	successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
-	app.Status = updateVerdict(successSeen)
+	app.Status = updateVerdict(runScoopForApp(cfg, w, onProgress, "update", app.Name))
 }
 
 // UpdateProxiedApp 更新 proxy 保护罩内的 app：
@@ -145,32 +175,11 @@ func UpdatePlainApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress 
 // 失败只记录在 app.Status，不中断整体流程
 func UpdateProxiedApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress func(Progress)) {
 	if app.Status == IsGitHub {
-		if err := setProxiedManifest(app); err != nil {
-			// 备份完成但写入失败时 manifest 缺失，必须把备份还原回去
-			_ = restoreProxiedManifest(app)
-			app.Status = ManifestError
-			return
-		}
-		if app.Status != IsGitHub { // BackupExists 等状态：无法安全更新，跳过
-			return
-		}
+		proxiedAppCmd(cfg, app, w, onProgress, "update", app.Name, updateVerdict)
+		return
 	}
-
-	dp := newDownloadProgressFor(cfg, onProgress)
-	stop := dp.Start()
-	defer stop()
-
-	successSeen, _ := runScoopStream(w, dp.Feed, "update", app.Name)
-	verdict := updateVerdict(successSeen)
-
-	if app.Status == IsGitHub { // 无论更新成败都还原 manifest
-		_ = restoreProxiedManifest(app) // Status 被覆盖为 RestoreSuccess / RestoreFailed
-		if app.Status != RestoreSuccess {
-			verdict = RestoreFailed // 还原失败意味着 manifest 仍处于已修改状态，优先展示
-		}
-	}
-
-	app.Status = verdict
+	// Proxy set：直接执行，manifest 不动
+	app.Status = updateVerdict(runScoopForApp(cfg, w, onProgress, "update", app.Name))
 }
 
 // updateVerdict 判定更新成败：以成功标志为准。
