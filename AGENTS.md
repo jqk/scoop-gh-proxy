@@ -34,11 +34,12 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - `internal/scoop/job_object.go` — Windows Job Object（x/sys/windows）：KILL_ON_JOB_CLOSE 保证本程序退出（含异常）时子进程树一并终止，防孤儿
 - `internal/scoop/manifest.go` — manifest 的只读定位与应用（analyzeManifest / locateManifestEdits / applyManifestEdits，jsontext 流式；扫描器在 manifest_scanner.go）
 - `internal/scoop/manifest_scanner.go` — manifestScanner：jsontext 流式扫描 manifest 的状态与方法（scanArchitecture / scanArchBlock / scanURLValue / scanURLElement / readMemberName）
-- `internal/scoop/run_scoop.go` — scoop 命令执行：runScoop（全量捕获，无超时）、runScoopStream（流式透传 + 逐行扫描，无超时，observe 回调供调用方捕获行；命中成功标志置位，错误行不收集、随透传直接显示）、streamPipe 与 lineFilter（显示侧只输出有内容的行：分隔符折叠（\r+ 及其后至多一个 \n）、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留，对齐真实终端观感）
+- `internal/scoop/run_scoop.go` — scoop 命令执行：runScoop（全量捕获，无超时）、runScoopStream（流式透传 + 逐行扫描，无超时，observe 回调供调用方捕获行；命中成功标志置位，错误行不收集、随透传直接显示；writerIsConsole 判定显示目标，终端与非终端两种显示模式）、streamPipe 与 lineFilter（显示侧两种模式：终端——CLI 传 os.Stdout 的常规场景——字节原样透传，scoop 进度行自带的 \r 前缀由终端原地覆盖刷新、与 scoop 直跑观感一致，流结尾停在半行时补换行防本程序后续输出拼接；非终端——重定向到文件、GUI 注入的 writer——行归一（\r+ 及其后至多一个 \n 为一个行结束、空行与纯空白行丢弃、行尾空白裁剪、行首缩进保留），且 \r 后跟新内容视为同一行的重绘状态更新（aria2 进度行经 scoop Write-Host "`r..." -NoNewLine 输出），连续相同折叠为一行、内容变化才输出）
 - `internal/scoop/manifest_test.go` — 定位/应用的单测
 - `internal/scoop/download_progress_test.go` — Feed 解析 / tick 事件 / nil-safe 的单测
 - `internal/scoop/update_test.go` — matchUpdateSuccess / updateVerdict / pickRequestedApps 的单测
 - `internal/scoop/install_test.go` — LocateInstallApp（t.TempDir 构造桶）/ installSpec / installVerdict 的单测
+- `internal/scoop/run_scoop_test.go` — streamPipe / lineFilter 的单测（行归一、重绘去重、终端透传、onLine 行切分；byteReader 逐字节喂入制造最恶劣块边界）
 - `internal/cli/printer_test.go` — bannerText / printTable / renderDownloadLine / humanSize 的单测
 - `internal/cli/cli_test.go` — requestedApps 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找；fillBucketManifest 定位补全
@@ -106,7 +107,7 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - manifest 的只读定位与 backup 的只读扫描均为纯查询，set、restore、status、update 四条命令共用同一实现；
   是否落盘仅由命令层决定（set/update 的 dryRun 或落盘步骤），核心层不打印、不退出、不调用 os.Exit
 - prepareAppManifest（定位 bucket + 分析 manifest）为 SetProxyForOutdatedApps 与 PrepareUpdate 共用
-- update / install 的流式输出由注入的 io.Writer 决定（CLI 传 os.Stdout，将来 GUI 可传自己的 writer）；成功/失败标志表集中在 update.go（updateSuccessMarkers / scoopFailureMarkers）；manifest 保护罩（proxiedAppCmd）与流式执行（runScoopForApp）为两者共用
+- update / install 的流式输出由注入的 io.Writer 决定（CLI 传 os.Stdout，将来 GUI 可传自己的 writer）；显示侧模式由 writerIsConsole 判定——终端原样透传（\r 原地重绘生效），非终端（重定向、GUI）行归一 + 进度重绘去重（内容变化才输出）；成功/失败标志表集中在 update.go（updateSuccessMarkers / scoopFailureMarkers）；manifest 保护罩（proxiedAppCmd）与流式执行（runScoopForApp）为两者共用
 
 ## 编译验证
 ```

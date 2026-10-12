@@ -42,7 +42,7 @@ func TestBannerText(t *testing.T) {
 	defer func() { version, commitDate = oldVersion, oldCommitDate }()
 
 	version, commitDate = "1.2.3", "2026-10-10"
-	want := "Copyright (c) 2026 fuhongjie\nscoop-gh-proxy (scoop-gh) 1.2.3, 2026-10-10\n\n"
+	want := "Copyright (c) 1999-2026 Not a dream Co., Ltd.\nscoop-gh-proxy 1.2.3, 2026-10-10\n\n"
 	if got := bannerText(); got != want {
 		t.Errorf("banner 不符\n got: %q\nwant: %q", got, want)
 	}
@@ -50,7 +50,7 @@ func TestBannerText(t *testing.T) {
 	// 直接构建（无注入日期）：省略日期，版权年份取当前年
 	version, commitDate = "dev", ""
 	got := bannerText()
-	want = fmt.Sprintf("Copyright (c) %d fuhongjie\nscoop-gh-proxy (scoop-gh) dev\n\n", time.Now().Year())
+	want = fmt.Sprintf("Copyright (c) 1999-%d Not a dream Co., Ltd.\nscoop-gh-proxy dev\n\n", time.Now().Year())
 	if got != want {
 		t.Errorf("dev banner 不符\n got: %q\nwant: %q", got, want)
 	}
