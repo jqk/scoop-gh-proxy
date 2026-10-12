@@ -19,14 +19,15 @@ func printUsage() {
 	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", version))
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  scoop-gh set                 将 bucket 中的 GitHub URL 替换为带 gh_proxy 的 URL")
-	fmt.Println("  scoop-gh restore             还原已备份的原始 [app].json")
-	fmt.Println("  scoop-gh status              预览将要还原/修改的明细（不实际修改）")
-	fmt.Println("  scoop-gh update [app...]     自动更新所有 outdated 的软件；指定 app 时只更新指定的 app")
-	fmt.Println("  scoop-gh install <bucket/app>  安装指定的 app（bucket 可省略）；Is github 的 app 自动应用 gh_proxy")
+	fmt.Println("  scoop-gh set                   向待更新应用 manifest 中的 github 下载链接插入代理地址")
+	fmt.Println("  scoop-gh restore               还原 set 命令的修改")
+	fmt.Println("  scoop-gh status                预览将要 set/restore 的明细")
+	fmt.Println("  scoop-gh update [app...]       更新所有过期软件；指定 app 时只更新指定的 app")
+	fmt.Println("  scoop-gh install <bucket/app>  安装指定的应用, bucket 可省略")
 	fmt.Println()
-	fmt.Println("  scoop-gh help                显示帮助")
-	fmt.Println("  scoop-gh version             显示版本")
+	fmt.Println("  scoop-gh help                  显示帮助，详细信息参见 README.md")
+	fmt.Println("  scoop-gh version               显示版本")
+	fmt.Println()
 }
 
 // ---------------------------------------------------------------------------
