@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 
@@ -12,12 +14,36 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// 程序信息头
+// ---------------------------------------------------------------------------
+
+// bannerText 程序信息头：版权行 + 名称版本行 + 空行，每条命令的输出以此开始。
+// 日期为版本对应代码（HEAD）的提交日期，构建时注入；直接 go build 时省略日期，
+// 版权年份取当前年
+func bannerText() string {
+	year := strconv.Itoa(time.Now().Year())
+	if len(commitDate) >= 4 {
+		year = commitDate[:4]
+	}
+
+	line2 := fmt.Sprintf("scoop-gh-proxy %s", version)
+	if commitDate != "" {
+		line2 += ", " + commitDate
+	}
+
+	return fmt.Sprintf("Copyright (c) 1999-%s Not a dream Co., Ltd.\n%s\n\n", year, line2)
+}
+
+// printBanner 输出程序信息头
+func printBanner() {
+	fmt.Print(bannerText())
+}
+
+// ---------------------------------------------------------------------------
 // 用法
 // ---------------------------------------------------------------------------
 
 func printUsage() {
-	color.New(color.FgWhite).Println(fmt.Sprintf("scoop-gh %s", version))
-	fmt.Println()
 	fmt.Println("用法:")
 	fmt.Println("  scoop-gh set                   向待更新应用 manifest 中的 github 下载链接插入代理地址")
 	fmt.Println("  scoop-gh restore               还原 set 命令的修改")
@@ -27,7 +53,6 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("  scoop-gh help                  显示帮助，详细信息参见 README.md")
 	fmt.Println("  scoop-gh version               显示版本")
-	fmt.Println()
 }
 
 // ---------------------------------------------------------------------------

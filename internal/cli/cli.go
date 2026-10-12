@@ -14,8 +14,9 @@ import (
 // （规则：最近 tag 的 patch 号 + 其后提交次数）；直接 go build 时为 dev
 var version = "dev"
 
-// buildTime 构建时间（2006-01-02_15:04:05），构建时注入；为空表示非脚本构建
-var buildTime = ""
+// commitDate 版本对应代码（HEAD）的提交日期（YYYY-MM-DD），构建时注入；
+// 为空表示非脚本构建
+var commitDate = ""
 
 // loadConfig 获取并校验 scoop 配置；失败时打印错误，code 非 0 为应退出的退出码
 func loadConfig() (cfg scoop.ScoopConfig, code int) {
@@ -33,6 +34,9 @@ func loadConfig() (cfg scoop.ScoopConfig, code int) {
 
 // RunSet set：定位 + 备份 + 修改 [app].json。返回退出码：1 = 配置错误
 func RunSet(dryRun bool) int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	cfg, code := loadConfig()
 	if code != 0 {
 		return code
@@ -55,6 +59,9 @@ func runSet(cfg *scoop.ScoopConfig, dryRun bool) int {
 
 // RunRestore restore：还原 backup。返回退出码：1 = 配置错误
 func RunRestore(dryRun bool) int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	cfg, code := loadConfig()
 	if code != 0 {
 		return code
@@ -77,6 +84,9 @@ func runRestore(cfg *scoop.ScoopConfig, dryRun bool) int {
 
 // RunStatus status：依次以 dry-run 执行 restore 与 set（配置只取一次）。返回退出码：1 = 配置错误
 func RunStatus() int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	cfg, code := loadConfig()
 	if code != 0 {
 		return code
@@ -107,6 +117,9 @@ func requestedApps(args []string) (requested []string, starMixed bool) {
 // RunUpdate update [app...]：无参数或含 * 时全量更新，否则只更新点名的 app。
 // 返回退出码：1 = 配置错误、status -l 失败或 proxy 清空失败
 func RunUpdate(args []string) int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	cfg, code := loadConfig()
 	if code != 0 {
 		return code
@@ -205,6 +218,9 @@ func parseInstallArg(arg string) (bucket, app string, err error) {
 // 返回退出码：1 = 配置/参数错误、已安装、bucket 或 app 不存在、状态不允许、
 // proxy 清空失败、安装未成功（未捕获成功标志或还原失败）
 func RunInstall(args []string) int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	if len(args) != 1 {
 		error_("用法: scoop-gh install <bucket/app>（bucket 可省略）")
 		return 1
@@ -271,16 +287,16 @@ func RunInstall(args []string) int {
 
 // RunHelp help：输出用法
 func RunHelp() int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
 	printUsage()
 	return 0
 }
 
-// RunVersion version：输出版本号（脚本构建时附带构建时间）
+// RunVersion version：版本信息在程序信息头第二行
 func RunVersion() int {
-	if buildTime != "" {
-		fmt.Printf("%s (built %s)\n", version, buildTime)
-	} else {
-		fmt.Println(version)
-	}
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
 	return 0
 }

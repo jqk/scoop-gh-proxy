@@ -2,7 +2,7 @@
 # 触发条件：v1.0.0 格式的 tag（在 validate 步骤用正则严格校验，
 # Actions 的 tag 过滤是 glob 语法，写不了 v[0-9]+.[0-9]+.[0-9]+ 这种正则）。
 # 产物：scoop-gh-<版本>-<架构>.zip（内含 scoop-gh.exe 与 README.md），amd64 / arm64 各一份。
-# 版本号与构建时间经 -ldflags -X 注入，与 build.bat 相同。
+# 版本号与提交日期（版本对应代码）经 -ldflags -X 注入，与 build.bat 相同。
 
 name: release
 
@@ -46,10 +46,10 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 0
         run: |
-          BUILD_TIME=$(date +%Y-%m-%d_%H:%M:%S)
+          COMMIT_DATE=$(git log -1 --format=%cs) # checkout 默认浅克隆且 HEAD 即 tag 提交
           mkdir -p dist/${{ matrix.arch }}
           go build -trimpath \
-            -ldflags "-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=${{ steps.version.outputs.version }} -X github.com/jqk/scoop-gh-proxy/internal/cli.buildTime=${BUILD_TIME}" \
+            -ldflags "-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=${{ steps.version.outputs.version }} -X github.com/jqk/scoop-gh-proxy/internal/cli.commitDate=${COMMIT_DATE}" \
             -o dist/${{ matrix.arch }}/scoop-gh.exe .
           cp README.md dist/${{ matrix.arch }}/
 

@@ -20,9 +20,9 @@ if "%1"=="-v" (
     exit /b 0
 )
 
-:: Build time (pure CMD, no PowerShell needed)
-for /f "tokens=2 delims==" %%i in ('wmic os get localdatetime /value') do set DT=%%i
-set BUILD_TIME=%DT:~0,4%-%DT:~4,2%-%DT:~6,2%_%DT:~8,2%:%DT:~10,2%:%DT:~12,2%
+:: Commit date of the version's code (HEAD), shown in the program banner.
+:: %%cs = committer date in YYYY-MM-DD (the %% is batch escaping for %)
+for /f "delims=" %%d in ('git log -1 --format^=%%cs') do set COMMIT_DATE=%%d
 
 :: Build for each CPU architecture into its own subdirectory.
 :: All dependencies are pure Go, so cross compiling with CGO disabled is enough.
@@ -30,7 +30,7 @@ for %%a in (amd64 arm64) do (
     echo Building windows/%%a ...
     set GOARCH=%%a
     set CGO_ENABLED=0
-    go build -ldflags="-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=%VERSION% -X github.com/jqk/scoop-gh-proxy/internal/cli.buildTime=%BUILD_TIME%" -o dist\%%a\%EXE_NAME% . || goto :fail
+    go build -ldflags="-s -w -X github.com/jqk/scoop-gh-proxy/internal/cli.version=%VERSION% -X github.com/jqk/scoop-gh-proxy/internal/cli.commitDate=%COMMIT_DATE%" -o dist\%%a\%EXE_NAME% . || goto :fail
 
     if exist README.md (
         copy /y README.md dist\%%a\README.md >nul
@@ -39,7 +39,7 @@ for %%a in (amd64 arm64) do (
 
 echo Build completed!
 echo Version: %VERSION%
-echo Build Time: %BUILD_TIME%
+echo Commit Date: %COMMIT_DATE%
 echo Output: dist\amd64\%EXE_NAME%
 echo Output: dist\arm64\%EXE_NAME%
 exit /b 0

@@ -5,14 +5,14 @@ Windows Go CLI 工具，用于修改 scoop bucket 中 `[app].json` 的 GitHub UR
 
 ## 构建
 ```
-build.bat             # 输出 dist\amd64\ 与 dist\arm64\ 下的 scoop-gh.exe（各含 README.md），注入版本号与构建时间
+build.bat             # 输出 dist\amd64\ 与 dist\arm64\ 下的 scoop-gh.exe（各含 README.md），注入版本号与提交日期
 build.bat --version   # 仅预览目标版本号，不构建
-go build -o dist\scoop-gh.exe .   # 直接构建（不经 build.bat，单架构跟随宿主机）：Version 为 dev、无构建时间；输出到 dist，勿在项目根目录留 exe
+go build -o dist\scoop-gh.exe .   # 直接构建（不经 build.bat，单架构跟随宿主机）：version 为 dev、无提交日期；输出到 dist，勿在项目根目录留 exe
 ```
 
-版本号规则：从 Git tag 计算——最近 tag 的 patch 号 + 其后提交次数（如 tag v0.1.0 之后 5 个提交 → 0.1.5；无 tag 时以 0.0.0 为基数、累计全部提交数）。build.bat 通过 `-ldflags -X` 注入 `internal/cli` 的 Version 与 BuildTime
+版本号规则：从 Git tag 计算——最近 tag 的 patch 号 + 其后提交次数（如 tag v0.1.0 之后 5 个提交 → 0.1.5；无 tag 时以 0.0.0 为基数、累计全部提交数）。build.bat 通过 `-ldflags -X` 注入 `internal/cli` 的 version 与 commitDate（版本对应代码即 HEAD 的提交日期，YYYY-MM-DD，`git log -1 --format=%cs`）
 
-GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发（ubuntu runner 交叉编译 windows amd64/arm64），步骤内正则校验 tag 必须为 `v1.0.0` 格式否则失败；版本取自 tag（去 v 前缀）、构建时间为 runner 当前时间，经同样的 `-ldflags -X` 注入；发布产物为 `scoop-gh-<版本>-<架构>.zip`（内含 scoop-gh.exe 与 README.md），经 softprops/action-gh-release@v2 发布
+GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发（ubuntu runner 交叉编译 windows amd64/arm64），步骤内正则校验 tag 必须为 `v1.0.0` 格式否则失败；版本取自 tag（去 v 前缀）、日期取 HEAD（即 tag 指向的提交）的提交日期，经同样的 `-ldflags -X` 注入；发布产物为 `scoop-gh-<版本>-<架构>.zip`（内含 scoop-gh.exe 与 README.md），经 softprops/action-gh-release@v2 发布
 
 ## 分层
 - `internal/scoop` — 核心库：只接收参数、返回数据与 error，不打印、不 os.Exit、不生成展示文本（进度经 Progress 结构化事件回调，渲染由调用方负责）。将来 GUI 与 internal/cli 平级，共用核心
@@ -21,8 +21,8 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 
 ## 文件结构
 - `main.go` — 入口，子命令分发（set / restore / status / update [app...] / install <bucket/app> / help / version，不带 -- 前缀），按 cli.Run* 返回的退出码统一 os.Exit
-- `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunInstall / RunHelp / RunVersion），返回退出码；update 与 install 的 proxy 保护罩在此层（PrepareUpdate / LocateInstallApp 成功后进入更新或安装，结束处显式调用 RestoreScoopProxy）；RunUpdate 接收 update 之后的参数（requestedApps 归一化：任一参数为 * 即全量更新，既有 * 又点名时返回 starMixed 交调用方提示）；RunInstall 经 parseInstallArg 解析 <bucket/app>（bucket 可省略）
-- `internal/cli/printer.go` — 全部输出：用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary / printTable）、下载进度渲染（printDownloadProgress / renderDownloadLine / humanSize，消费 scoop.Progress 事件）
+- `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunInstall / RunHelp / RunVersion），返回退出码；输出以程序信息头开始（printBanner）、空行结尾（defer fmt.Println）；update 与 install 的 proxy 保护罩在此层（PrepareUpdate / LocateInstallApp 成功后进入更新或安装，结束处显式调用 RestoreScoopProxy）；RunUpdate 接收 update 之后的参数（requestedApps 归一化：任一参数为 * 即全量更新，既有 * 又点名时返回 starMixed 交调用方提示）；RunInstall 经 parseInstallArg 解析 <bucket/app>（bucket 可省略）
+- `internal/cli/printer.go` — 全部输出：程序信息头（bannerText / printBanner，版权行 + 名称版本行 + 空行；日期为注入的提交日期，直接构建时省略、版权年份取当前年）、用法（printUsage）、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary / printTable）、下载进度渲染（printDownloadProgress / renderDownloadLine / humanSize，消费 scoop.Progress 事件）
 - `internal/cli/output.go` — 彩色输出（info/success/warning/error_/caution/fail）、IsTTY；caution/fail 走 stdout
 - `internal/scoop/config.go` — 解析并校验 scoop config；设置与恢复 proxy（ClearScoopProxy / RestoreScoopProxy，成功后同步更新 ScoopConfig 内存值）；读取 aria2-enabled（Aria2Enabled，控制 update 的下载进度来源：aria2 用自带 \r 进度流，默认下载器用 downloadProgress 自绘）
 - `internal/scoop/status.go` — 解析 scoop status -l（纯解析，不做文件查找）
@@ -39,7 +39,7 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - `internal/scoop/download_progress_test.go` — Feed 解析 / tick 事件 / nil-safe 的单测
 - `internal/scoop/update_test.go` — matchUpdateSuccess / updateVerdict / pickRequestedApps 的单测
 - `internal/scoop/install_test.go` — LocateInstallApp（t.TempDir 构造桶）/ installSpec / installVerdict 的单测
-- `internal/cli/printer_test.go` — printTable / renderDownloadLine / humanSize 的单测
+- `internal/cli/printer_test.go` — bannerText / printTable / renderDownloadLine / humanSize 的单测
 - `internal/cli/cli_test.go` — requestedApps 的单测
 - `internal/scoop/bucket.go` — 备份/还原 [app].json；install.json 与 manifest 查找；fillBucketManifest 定位补全
 - `internal/scoop/tools.go` — stripAnsi、fileExists

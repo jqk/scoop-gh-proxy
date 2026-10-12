@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPrintTable(t *testing.T) {
@@ -33,6 +34,25 @@ func TestPrintTableSingleRow(t *testing.T) {
 	want := "Name  Status \n----  -------\nuv    Updated\n"
 	if got := buf.String(); got != want {
 		t.Errorf("窄列（数据未超表头）也应按表头宽度对齐\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestBannerText(t *testing.T) {
+	oldVersion, oldCommitDate := version, commitDate
+	defer func() { version, commitDate = oldVersion, oldCommitDate }()
+
+	version, commitDate = "1.2.3", "2026-10-10"
+	want := "Copyright (c) 2026 fuhongjie\nscoop-gh-proxy (scoop-gh) 1.2.3, 2026-10-10\n\n"
+	if got := bannerText(); got != want {
+		t.Errorf("banner 不符\n got: %q\nwant: %q", got, want)
+	}
+
+	// 直接构建（无注入日期）：省略日期，版权年份取当前年
+	version, commitDate = "dev", ""
+	got := bannerText()
+	want = fmt.Sprintf("Copyright (c) %d fuhongjie\nscoop-gh-proxy (scoop-gh) dev\n\n", time.Now().Year())
+	if got != want {
+		t.Errorf("dev banner 不符\n got: %q\nwant: %q", got, want)
 	}
 }
 
