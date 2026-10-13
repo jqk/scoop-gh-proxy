@@ -1,6 +1,6 @@
 module github.com/jqk/scoop-gh-proxy
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/fatih/color v1.19.0 // direct
