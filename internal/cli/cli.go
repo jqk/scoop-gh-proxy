@@ -179,7 +179,9 @@ func RunUpdate(args []string) int {
 			}
 			done++
 			info("[%d/%d] %s", done, total, app.Name)
-			scoop.UpdateProxiedApp(&cfg, app, os.Stdout, printDownloadProgress)
+			pp := newProgressPrinter(os.Stdout)
+			scoop.UpdateProxiedApp(&cfg, app, pp, pp.printProgress)
+			pp.finishLine()
 			printAppOutcome(app)
 		}
 
@@ -260,7 +262,9 @@ func RunInstall(args []string) int {
 			error_("备份并清空 scoop config proxy 失败: %s", err)
 			return 1
 		}
-		scoop.InstallApp(&cfg, &rec, os.Stdout, printDownloadProgress)
+		pp := newProgressPrinter(os.Stdout)
+		scoop.InstallApp(&cfg, &rec, pp, pp.printProgress)
+		pp.finishLine()
 		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
 			error_("恢复 scoop config proxy 失败: %s", err)
 		}

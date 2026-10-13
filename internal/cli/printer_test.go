@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
 func TestPrintTable(t *testing.T) {
@@ -103,5 +105,62 @@ func TestHumanSize(t *testing.T) {
 		if got := humanSize(c.in); got != c.want {
 			t.Errorf("humanSize(%d) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestProgressPrinterLines(t *testing.T) {
+	// 非终端（bytes.Buffer）：内容变化才输出一行
+	var buf bytes.Buffer
+	p := newProgressPrinter(&buf)
+
+	first := renderDownloadLine("f.zip", 1024, 4096)
+	second := renderDownloadLine("f.zip", 2048, 4096)
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 1024, Total: 4096})
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 1024, Total: 4096}) // 内容未变，不再输出
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 2048, Total: 4096})
+
+	want := first + "\n" + second + "\n"
+	if got := buf.String(); got != want {
+		t.Errorf("非终端进度输出不符\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestProgressPrinterConsole(t *testing.T) {
+	// 终端：\r 原地重绘不换行，新行更短补空格覆盖残留；流式输出与 finishLine 前先补换行
+	var buf bytes.Buffer
+	p := &progressPrinter{w: &buf, console: true}
+
+	full := renderDownloadLine("f.zip", 4096, 4096) // 100%，宽行
+	short := renderDownloadLine("f.zip", 2048, 0)   // 总量未知，短行
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 4096, Total: 4096})
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 2048, Total: 0})
+
+	want := "\r" + full + "\r" + short + strings.Repeat(" ", len(full)-len(short))
+
+	if _, err := p.Write([]byte("next")); err != nil { // 流式输出前终结进度行
+		t.Fatalf("Write 失败: %v", err)
+	}
+	want += "\nnext"
+
+	p.printProgress(scoop.Progress{File: "g.zip", Downloaded: 1, Total: 0}) // 新一轮下载从新行开始
+	want += "\r" + renderDownloadLine("g.zip", 1, 0)
+	p.finishLine() // 流程结束时终结未完的进度行
+	want += "\n"
+
+	if got := buf.String(); got != want {
+		t.Errorf("终端进度输出不符\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestProgressPrinterFinishLineNoop(t *testing.T) {
+	// 无未完进度行时 finishLine 与 Write 均不额外输出换行
+	var buf bytes.Buffer
+	p := newProgressPrinter(&buf)
+	p.finishLine()
+	if _, err := p.Write([]byte("hello")); err != nil {
+		t.Fatalf("Write 失败: %v", err)
+	}
+	if got, want := buf.String(), "hello"; got != want {
+		t.Errorf("无未完行时不应有额外输出\n got: %q\nwant: %q", got, want)
 	}
 }

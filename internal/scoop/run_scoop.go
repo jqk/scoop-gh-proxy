@@ -93,15 +93,32 @@ func runScoopStream(w io.Writer, observe func(string), args ...string) (successS
 	return successSeen, runErr
 }
 
+// consoleAware 显示目标包装器可实现的可选接口：声明最终显示目标是否为终端。
+// 包装 os.Stdout 的 writer（cli 的进度渲染器 progressPrinter，兼作流式透传
+// writer）借此保留终端透传模式
+type consoleAware interface {
+	WriterIsConsole() bool
+}
+
 // writerIsConsole 判断显示目标是否为终端控制台（决定 streamPipe 的显示侧模式）。
-// 仅 *os.File 且带控制台模式者算终端；bytes.Buffer、GUI 注入的 writer 等一律视为非终端
+// 实现 consoleAware 的包装器以其声明为准；仅 *os.File 且带控制台模式者算终端；
+// bytes.Buffer、GUI 注入的 writer 等一律视为非终端
 func writerIsConsole(w io.Writer) bool {
+	if ca, ok := w.(consoleAware); ok {
+		return ca.WriterIsConsole()
+	}
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
 	}
 	var mode uint32
 	return windows.GetConsoleMode(windows.Handle(f.Fd()), &mode) == nil
+}
+
+// IsConsole writerIsConsole 的导出形式：调用方（cli）构造进度渲染器时用同一
+// 判定决定进度行的刷新方式（终端 \r 原地重绘 / 非终端逐行输出）
+func IsConsole(w io.Writer) bool {
+	return writerIsConsole(w)
 }
 
 // lineFilter 显示侧的行过滤器（非终端模式），滤除管道输出中的伪影，对齐 scoop
@@ -124,10 +141,10 @@ type lineFilter struct {
 func (f *lineFilter) filter(chunk []byte) []byte {
 	out := make([]byte, 0, len(chunk))
 	for _, b := range chunk {
-		switch {
-		case b == '\r':
+		switch  b{
+		case '\r':
 			f.pendingCR = true
-		case b == '\n':
+		case '\n':
 			f.pendingCR = false // \r+ 至多带一个 \n，整个序列是一个行结束
 			if f.lineOpen {
 				out = append(out, f.finalize(false)...)
