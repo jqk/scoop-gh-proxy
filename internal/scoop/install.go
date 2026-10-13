@@ -19,8 +19,8 @@ import (
 // 且不会打印成功标志，必须提前拦截），最后 analyzeManifest 只读分析——
 // 分析错误按项目惯例记录在 Status（ManifestError），不作为 error 返回。
 // error 仅对应：已安装、bucket 不存在、app 不存在、buckets 目录读取失败
-func LocateInstallApp(cfg *ScoopConfig, bucket, app string) (OutdatedApp, error) {
-	rec := OutdatedApp{Name: app}
+func LocateInstallApp(cfg *ScoopConfig, bucket, app string) (ManagedApp, error) {
+	rec := ManagedApp{Name: app}
 	bucketsRoot := filepath.Join(cfg.RootPath, "buckets")
 
 	if bucket != "" {
@@ -69,27 +69,18 @@ func LocateInstallApp(cfg *ScoopConfig, bucket, app string) (OutdatedApp, error)
 // installSpec 构造 scoop install 的 app 参数：<bucket>/<app>。
 // bucket/app 形式在 scoop 中是显式桶请求（Get-Manifest 直接读取指定桶的 manifest），
 // 保证安装的正是本程序定位并修改过的那份 manifest
-func installSpec(app *OutdatedApp) string {
+func installSpec(app *ManagedApp) string {
 	return app.Bucket + "/" + app.Name
-}
-
-// installVerdict 判定安装成败：与 updateVerdict 相同，以成功标志为最终定论；
-// 命中成功标志记为 Installed（与 update 的 Updated 区分），否则 InstallFailed
-func installVerdict(successSeen bool) OutdatedAppStatus {
-	if successSeen {
-		return Installed
-	}
-	return InstallFailed
 }
 
 // InstallApp 在 manifest 保护罩内安装 Is github 的 app：
 // 先把 gh_proxy 前缀写入 bucket manifest，执行 scoop install <bucket>/<app>，
 // 结束后无论成败都还原 manifest。结果记录在 app.Status
-// （Installed / Update failed / Manifest error / Manifest backup exists / Restore failed）。
+// （Installed / Install failed / Manifest error / Manifest backup exists / Restore failed）。
 // 仅处理 IsGitHub，其它状态由调用方门控；w 与 onProgress 的含义同 UpdateProxiedApp
-func InstallApp(cfg *ScoopConfig, app *OutdatedApp, w io.Writer, onProgress func(Progress)) {
+func InstallApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(Progress)) {
 	if app.Status != IsGitHub {
 		return
 	}
-	proxiedAppCmd(cfg, app, w, onProgress, "install", installSpec(app), installVerdict)
+	proxiedAppCmd(cfg, app, w, onProgress, "install", installSpec(app), Installed, InstallFailed)
 }

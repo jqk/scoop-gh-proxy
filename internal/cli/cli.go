@@ -10,19 +10,11 @@ import (
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
-// version 版本号，构建时由 build.bat / release.yml 通过 -ldflags -X 注入
-// （规则：最近 tag 的 patch 号 + 其后提交次数）；直接 go build 时为 dev
-var version = "dev"
-
-// commitDate 版本对应代码（HEAD）的提交日期（YYYY-MM-DD），构建时注入；
-// 为空表示非脚本构建
-var commitDate = ""
-
 // loadConfig 获取并校验 scoop 配置；失败时打印错误，code 非 0 为应退出的退出码
 func loadConfig() (cfg scoop.ScoopConfig, code int) {
 	cfg, err := scoop.GetScoopConfig()
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 		return cfg, 1
 	}
 	return cfg, 0
@@ -33,7 +25,7 @@ func loadConfig() (cfg scoop.ScoopConfig, code int) {
 // ---------------------------------------------------------------------------
 
 // RunSet set：定位 + 备份 + 修改 [app].json。返回退出码：1 = 配置错误
-func RunSet(dryRun bool) int {
+func RunSet() int {
 	defer fmt.Println() // 输出以空行结尾
 	printBanner()
 
@@ -41,13 +33,13 @@ func RunSet(dryRun bool) int {
 	if code != 0 {
 		return code
 	}
-	return runSet(&cfg, dryRun)
+	return runSet(&cfg, false)
 }
 
 func runSet(cfg *scoop.ScoopConfig, dryRun bool) int {
 	apps, err := scoop.SetProxyForOutdatedApps(cfg, dryRun)
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 	}
 	printSetSummary(apps)
 	return 0
@@ -58,7 +50,7 @@ func runSet(cfg *scoop.ScoopConfig, dryRun bool) int {
 // ---------------------------------------------------------------------------
 
 // RunRestore restore：还原 backup。返回退出码：1 = 配置错误
-func RunRestore(dryRun bool) int {
+func RunRestore() int {
 	defer fmt.Println() // 输出以空行结尾
 	printBanner()
 
@@ -66,13 +58,13 @@ func RunRestore(dryRun bool) int {
 	if code != 0 {
 		return code
 	}
-	return runRestore(&cfg, dryRun)
+	return runRestore(&cfg, false)
 }
 
 func runRestore(cfg *scoop.ScoopConfig, dryRun bool) int {
 	items, err := scoop.RestoreOutdatedAppManifests(cfg, dryRun)
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 	}
 	printRestoreSummary(items, !dryRun)
 	return 0
@@ -132,7 +124,7 @@ func RunUpdate(args []string) int {
 
 	plan, err := scoop.PrepareUpdate(&cfg, requested)
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 		return 1
 	}
 
@@ -168,7 +160,7 @@ func RunUpdate(args []string) int {
 	// 所有提前 return 都发生在清空之前，无需 defer 兜底
 	if len(plan.Proxied) > 0 {
 		if err := scoop.ClearScoopProxy(&cfg); err != nil {
-			error_("备份并清空 scoop config proxy 失败: %s", err)
+			errorf("备份并清空 scoop config proxy 失败: %s", err)
 			return 1
 		}
 
@@ -186,7 +178,7 @@ func RunUpdate(args []string) int {
 		}
 
 		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
-			error_("恢复 scoop config proxy 失败: %s", err)
+			errorf("恢复 scoop config proxy 失败: %s", err)
 		}
 	}
 
@@ -224,12 +216,12 @@ func RunInstall(args []string) int {
 	printBanner()
 
 	if len(args) != 1 {
-		error_("用法: scoop-gh install <bucket/app>（bucket 可省略）")
+		errorf("用法: scoop-gh install <bucket/app>（bucket 可省略）")
 		return 1
 	}
 	bucket, app, err := parseInstallArg(args[0])
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 		return 1
 	}
 
@@ -240,7 +232,7 @@ func RunInstall(args []string) int {
 
 	rec, err := scoop.LocateInstallApp(&cfg, bucket, app)
 	if err != nil {
-		error_("%s", err)
+		errorf("%s", err)
 		return 1
 	}
 	spec := rec.Bucket + "/" + rec.Name
@@ -259,17 +251,17 @@ func RunInstall(args []string) int {
 		// 保护罩：安装前清空 proxy（备份到 gh_scoop_proxy_backup），结束后恢复。
 		// 所有提前 return 都发生在清空之前，无需 defer 兜底
 		if err := scoop.ClearScoopProxy(&cfg); err != nil {
-			error_("备份并清空 scoop config proxy 失败: %s", err)
+			errorf("备份并清空 scoop config proxy 失败: %s", err)
 			return 1
 		}
 		pp := newProgressPrinter(os.Stdout)
 		scoop.InstallApp(&cfg, &rec, pp, pp.printProgress)
 		pp.finishLine()
 		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
-			error_("恢复 scoop config proxy 失败: %s", err)
+			errorf("恢复 scoop config proxy 失败: %s", err)
 		}
 	default:
-		error_("%s: %s，无法安装", spec, rec.Status)
+		errorf("%s: %s，无法安装", spec, rec.Status)
 		return 1
 	}
 

@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// getOutdatedApps 执行并解析 scoop status -l。
+// fetchOutdatedApps 执行并解析 scoop status -l。
 // 非空行第一行为标题行，第二行为分隔线，其余为数据行。
-// 按分隔线确定各列起始位置，据此切分每行数据。
-func getOutdatedApps() ([]OutdatedApp, error) {
+// 按分隔线确定各列起始位置，据此切分每行数据
+func fetchOutdatedApps() ([]ManagedApp, error) {
 	s, err := runScoop("status", "-l")
 	if err != nil {
 		return nil, err
@@ -28,7 +28,8 @@ func getOutdatedApps() ([]OutdatedApp, error) {
 	lineCount := len(nonEmptyLines)
 	if lineCount == 1 && nonEmptyLines[0] == "Everything is ok!" {
 		return nil, nil // 没有待升级的软件，直接返回。scoop status -l 不会什么都不返回
-	} else if lineCount < 2 { // 至少要有标题行和分隔线
+	}
+	if lineCount < 2 { // 至少要有标题行和分隔线
 		return nil, errors.New("scoop status -l 输出缺少标题行或分隔线")
 	}
 
@@ -38,9 +39,9 @@ func getOutdatedApps() ([]OutdatedApp, error) {
 		return nil, errors.New("scoop status -l 分隔线列数不足 5，无法解析")
 	}
 
-	var apps []OutdatedApp
+	var apps []ManagedApp
 	for _, line := range nonEmptyLines[2:] { // 状态内容从第 3 行开始
-		apps = append(apps, createOutdatedApp(line, starts))
+		apps = append(apps, parseStatusApp(line, starts))
 	}
 
 	return apps, nil
@@ -67,8 +68,8 @@ func findColumnStarts(sep string) (starts []int) {
 	return
 }
 
-// createOutdatedApp 按列起始位置切分一行，返回 OutdatedApp 结构体。
-func createOutdatedApp(line string, starts []int) OutdatedApp {
+// parseStatusApp 按列起始位置切分一行，返回 ManagedApp 结构体
+func parseStatusApp(line string, starts []int) ManagedApp {
 	length := len(line)
 
 	cut := func(a, b int) string { // 从行字符串中，按起止位置切分段落的闭包
@@ -83,7 +84,7 @@ func createOutdatedApp(line string, starts []int) OutdatedApp {
 		return strings.TrimSpace(line[a:end])
 	}
 
-	app := OutdatedApp{
+	app := ManagedApp{
 		Name:      cut(starts[0], starts[1]),
 		Installed: cut(starts[1], starts[2]),
 		Latest:    cut(starts[2], starts[3]),

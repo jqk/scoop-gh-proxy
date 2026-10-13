@@ -69,7 +69,7 @@ func runScoopStream(w io.Writer, observe func(string), args ...string) (successS
 		if observe != nil {
 			observe(line)
 		}
-		if matchUpdateSuccess(line) {
+		if matchScoopSuccess(line) {
 			mu.Lock()
 			successSeen = true
 			mu.Unlock()
@@ -77,15 +77,12 @@ func runScoopStream(w io.Writer, observe func(string), args ...string) (successS
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_ = streamPipe(w, &mu, stdoutPipe, onLine, raw)
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		_ = streamPipe(w, &mu, stderrPipe, onLine, raw)
-	}()
+	})
 
 	wg.Wait()
 	runErr = cmd.Wait()
@@ -141,7 +138,7 @@ type lineFilter struct {
 func (f *lineFilter) filter(chunk []byte) []byte {
 	out := make([]byte, 0, len(chunk))
 	for _, b := range chunk {
-		switch  b{
+		switch b {
 		case '\r':
 			f.pendingCR = true
 		case '\n':

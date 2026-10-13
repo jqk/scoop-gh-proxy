@@ -19,9 +19,9 @@ func main() {
 	var code int
 	switch os.Args[1] {
 	case "set":
-		code = cli.RunSet(false)
+		code = cli.RunSet()
 	case "restore":
-		code = cli.RunRestore(false)
+		code = cli.RunRestore()
 	case "status":
 		code = cli.RunStatus()
 	case "update":

@@ -1,8 +1,11 @@
 package scoop
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
-func TestMatchUpdateSuccess(t *testing.T) {
+func TestMatchScoopSuccess(t *testing.T) {
 	tests := []struct {
 		name string
 		line string
@@ -20,8 +23,8 @@ func TestMatchUpdateSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := matchUpdateSuccess(tt.line); got != tt.want {
-				t.Errorf("matchUpdateSuccess(%q) = %v, want %v", tt.line, got, tt.want)
+			if got := matchScoopSuccess(tt.line); got != tt.want {
+				t.Errorf("matchScoopSuccess(%q) = %v, want %v", tt.line, got, tt.want)
 			}
 		})
 	}
@@ -47,26 +50,14 @@ func TestAria2FallbackScenario(t *testing.T) {
 		"Checking hash of uv-x86_64-pc-windows-msvc.zip... OK.",
 	}
 	for _, line := range noise {
-		if matchUpdateSuccess(line) {
+		if matchScoopSuccess(line) {
 			t.Errorf("瞬时噪声不应命中成功标志: %q", line)
 		}
 	}
 
 	successLine := "'uv' (0.13.0) was installed successfully!"
-	if !matchUpdateSuccess(successLine) {
+	if !matchScoopSuccess(successLine) {
 		t.Error("成功行应命中成功标志")
-	}
-	if got := updateVerdict(matchUpdateSuccess(successLine)); got != Updated {
-		t.Errorf("updateVerdict = %v, want Updated", got)
-	}
-}
-
-func TestUpdateVerdict(t *testing.T) {
-	if got := updateVerdict(true); got != Updated {
-		t.Errorf("updateVerdict(true) = %v, want Updated", got)
-	}
-	if got := updateVerdict(false); got != UpdateFailed {
-		t.Errorf("updateVerdict(false) = %v, want UpdateFailed", got)
 	}
 }
 
@@ -106,7 +97,7 @@ func TestMatchScoopFailure(t *testing.T) {
 // TestPickRequestedApps 点名匹配：大小写不敏感、静默去重（保留首现顺序）、
 // 同名 outdated 行只取第一行、未匹配的点名原样归入 noUpdate
 func TestPickRequestedApps(t *testing.T) {
-	apps := []OutdatedApp{
+	apps := []ManagedApp{
 		{Name: "git"},
 		{Name: "nodejs"},
 		{Name: "Alma"},
@@ -137,25 +128,12 @@ func TestPickRequestedApps(t *testing.T) {
 			for _, app := range picked {
 				gotPicked = append(gotPicked, app.Name)
 			}
-			if !equalStrings(gotPicked, tt.wantPicked) {
+			if !slices.Equal(gotPicked, tt.wantPicked) { // slices.Equal 视 nil 与空切片为相同
 				t.Errorf("picked = %v, want %v", gotPicked, tt.wantPicked)
 			}
-			if !equalStrings(noUpdate, tt.wantNoUpdate) {
+			if !slices.Equal(noUpdate, tt.wantNoUpdate) {
 				t.Errorf("noUpdate = %v, want %v", noUpdate, tt.wantNoUpdate)
 			}
 		})
 	}
-}
-
-// equalStrings 逐元素比较（nil 与空切片视为相同）
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

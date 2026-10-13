@@ -24,9 +24,9 @@ func TestDownloadProgressFeed(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var d *downloadProgress
-			d.Feed(c.line) // nil-safe：不应 panic
+			d.feed(c.line) // nil-safe：不应 panic
 			d = &downloadProgress{}
-			d.Feed(c.line)
+			d.feed(c.line)
 			if d.total != c.total {
 				t.Errorf("total = %d, want %d", d.total, c.total)
 			}
@@ -36,13 +36,13 @@ func TestDownloadProgressFeed(t *testing.T) {
 
 func TestNilSafeDownloadProgress(t *testing.T) {
 	var d *downloadProgress
-	d.Feed("whatever")
-	if stop := d.Start(); stop == nil {
-		t.Error("Start 应返回停止函数")
+	d.feed("whatever")
+	if stop := d.start(); stop == nil {
+		t.Error("start 应返回停止函数")
 	} else {
 		stop()
 	}
-	stop := d.Start()
+	stop := d.start()
 	stop()
 	stop() // 幂等
 }
@@ -128,7 +128,7 @@ func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
 	}
 
 	// 现场一：scoop 尚未输出（total 未知）的启动窗口
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		tick()
 	}
 	if len(got) != 0 {
@@ -139,7 +139,7 @@ func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
 	d.mu.Lock()
 	d.total = 35 * 1024 * 1024
 	d.mu.Unlock()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		tick()
 	}
 	if len(got) != 0 {

@@ -25,8 +25,8 @@ type Progress struct {
 // 后静默，管道侧拿不到任何进度字节。好在默认下载器边下边写 cache 目录的
 // <name>.download 临时文件（完成后改名），总量又能从那行解析——轮询临时文件
 // 大小即可得到进度，以 Progress 事件回调给调用方：
-//   - Feed：接到扫描行时解析 "Downloading <url> (15.0 MB)..." 得到本次总量
-//   - Start/Stop：轮询 cache 下最新的 *.download（200ms），整百分比变化时发一次事件
+//   - feed：接到扫描行时解析 "Downloading <url> (15.0 MB)..." 得到本次总量
+//   - start/stop：轮询 cache 下最新的 *.download（200ms），整百分比变化时发一次事件
 //
 // aria2 启用时构造方传 nil（aria2 自带 \r 进度流，经透传展示即可）；
 // 所有方法 nil-safe，调用点无需判断
@@ -58,8 +58,8 @@ func newDownloadProgressFor(cfg *ScoopConfig, onProgress func(Progress)) *downlo
 	return newDownloadProgress(onProgress, cfg.RootPath)
 }
 
-// Feed 解析 scoop 输出行，捕获下载总量（每次新下载都会重新输出该行）。nil-safe
-func (d *downloadProgress) Feed(line string) {
+// feed 解析 scoop 输出行，捕获下载总量（每次新下载都会重新输出该行）。nil-safe
+func (d *downloadProgress) feed(line string) {
 	if d == nil {
 		return
 	}
@@ -89,15 +89,14 @@ func (d *downloadProgress) Feed(line string) {
 	d.mu.Unlock()
 }
 
-// Start 启动轮询协程，返回停止函数（幂等）。nil-safe
-func (d *downloadProgress) Start() (stop func()) {
+// start 启动轮询协程，返回停止函数（幂等）。nil-safe
+func (d *downloadProgress) start() (stop func()) {
 	if d == nil {
 		return func() {}
 	}
 	done := make(chan struct{})
 	go d.loop(done)
-	var once sync.Once
-	return func() { once.Do(func() { close(done) }) }
+	return sync.OnceFunc(func() { close(done) })
 }
 
 func (d *downloadProgress) loop(done <-chan struct{}) {

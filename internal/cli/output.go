@@ -5,14 +5,14 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+
+	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
+// IsTTY 判断输出目标是否为终端控制台（决定是否启用彩色输出）。
+// 委托核心层的 IsConsole（GetConsoleMode 判定），全程序共用同一终端标准
 func IsTTY(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeDevice != 0
+	return scoop.IsConsole(f)
 }
 
 // info  INFO：普通
@@ -32,8 +32,8 @@ func warning(format string, args ...any) {
 	c.Fprintf(os.Stderr, format+"\n", args...)
 }
 
-// error_ ERROR：红色
-func error_(format string, args ...any) {
+// errorf ERROR：红色（命名与 fmt.Errorf 平行）
+func errorf(format string, args ...any) {
 	c := color.New(color.FgRed)
 	c.Fprintf(os.Stderr, format+"\n", args...)
 }
@@ -46,7 +46,7 @@ func caution(format string, args ...any) {
 	c.Fprintf(os.Stdout, format+"\n", args...)
 }
 
-// fail 失败：红色，写 stdout。用途同 caution（error_ 走 stderr，仅用于不与流式输出交错的独立消息）
+// fail 失败：红色，写 stdout。用途同 caution（errorf 走 stderr，仅用于不与流式输出交错的独立消息）
 func fail(format string, args ...any) {
 	c := color.New(color.FgRed)
 	c.Fprintf(os.Stdout, format+"\n", args...)
