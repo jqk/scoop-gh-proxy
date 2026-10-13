@@ -18,6 +18,12 @@ func runScoopForApp(cfg *ScoopConfig, w io.Writer, onProgress func(Progress), cm
 	stop := dp.start()
 	defer stop()
 
+	if dp != nil {
+		// 流式输出写入前补画下载收尾的 100%（.download 改名消失 = 下载成功），
+		// 见 completingWriter；aria2 启用时 dp 为 nil，透传路径不受影响
+		w = &completingWriter{w: w, dp: dp}
+	}
+
 	var mu sync.Mutex // 保护 failureLine：两个管道的读取协程并发回调
 	failureLine := ""
 	observe := func(line string) {

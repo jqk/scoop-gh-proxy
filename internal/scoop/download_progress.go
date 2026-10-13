@@ -1,6 +1,7 @@
 package scoop
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -40,6 +41,7 @@ type downloadProgress struct {
 	lastAt   time.Time // 上次上报时间（限频）
 	lastName string    // 上一拍选中的下载文件名
 	lastSize int64     // 上一拍选中时的大小
+	active   string    // 曾观察到增长的文件名（区别于按 mtime 盲选的 lastName），complete 的收尾对象
 }
 
 // "Downloading <url> (15.0 MB)..."（download.ps1:160）。总量为 scoop filesize
@@ -127,6 +129,7 @@ func (d *downloadProgress) tick() {
 	if !growing {
 		return
 	}
+	d.active = name // 增长的才是在下载的文件：陈旧文件永不增长，不会进入 active
 	now := time.Now()
 	if d.total > 0 {
 		pct := int(size * 100 / d.total)
@@ -142,6 +145,28 @@ func (d *downloadProgress) tick() {
 		d.lastAt = now
 	}
 	d.onProgress(Progress{File: name, Downloaded: size, Total: d.total})
+}
+
+// complete 补报下载收尾的 100%：曾观察到增长的 *.download 已消失时（下载成功后
+// scoop 将其改名挪走）补发一次满额事件。下载中断则部分文件保留在原处，不虚报。
+// 轮询最后一拍常落在 900ms 限频窗口内、或错过改名瞬间（改名到下一行输出之间
+// 往往不足一个轮询周期），故收尾由 completingWriter 在流式输出写入前显式触发。
+// nil-safe
+func (d *downloadProgress) complete() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.active == "" || d.total <= 0 {
+		return
+	}
+	if fileExists(filepath.Join(d.cacheDir, d.active+".download")) {
+		return // 临时文件还在：仍在下载或已中断，保持最后的真实进度
+	}
+	name := d.active
+	d.active = ""
+	d.onProgress(Progress{File: name, Downloaded: d.total, Total: d.total})
 }
 
 // currentDownload 找 cache 目录中正在写入的 *.download 临时文件（取最新修改的那个）
@@ -161,4 +186,23 @@ func currentDownload(dir string) (name string, size int64, ok bool) {
 		return "", 0, false
 	}
 	return strings.TrimSuffix(filepath.Base(best), ".download"), size, true
+}
+
+// completingWriter 包装显示目标：流式输出写入前给 downloadProgress 一次收尾
+// 机会——100% 那帧必须先于触发它的下一行输出（如 "Checking hash of..."）画上，
+// 否则进度行被透传字节终结时停在 9x%。仅 runScoopForApp 在进度轮询启用时包装
+type completingWriter struct {
+	w  io.Writer
+	dp *downloadProgress
+}
+
+func (c *completingWriter) Write(p []byte) (int, error) {
+	c.dp.complete()
+	return c.w.Write(p)
+}
+
+// WriterIsConsole 转发内层显示目标的终端判定（progressPrinter 等包装器实现了
+// consoleAware，透传模式不因本包装而退化）
+func (c *completingWriter) WriterIsConsole() bool {
+	return writerIsConsole(c.w)
 }
