@@ -39,6 +39,18 @@ func runScoopForApp(cfg *ScoopConfig, w io.Writer, onProgress func(Progress), cm
 	return runResult{successSeen: successSeen, failureLine: failureLine}
 }
 
+// runPlainApp 在不处理 manifest 与 proxy 的前提下直接流式执行 scoop <cmd> <spec>：
+// update 的 Proxy set / Not github 组与 install 的 Not github 共用。
+// 成败以成功标志为准（successStatus / failStatus 由调用方传入），失败原因行记录在 app.Failure
+func runPlainApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(Progress), cmd, spec string, successStatus, failStatus ManagedAppStatus) {
+	r := runScoopForApp(cfg, w, onProgress, cmd, spec)
+	app.Failure = r.failureLine
+	app.Status = failStatus
+	if r.successSeen {
+		app.Status = successStatus
+	}
+}
+
 // proxiedAppCmd 在 manifest 保护罩内执行 scoop <cmd> <spec>：
 // 先把 gh_proxy 前缀写入 manifest，结束后无论成败都还原 manifest。
 // successStatus / failStatus 为成功标志命中与否对应的结果状态（update 为

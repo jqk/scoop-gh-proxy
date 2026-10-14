@@ -174,13 +174,13 @@ uv          extras      Failed
 
 分析 manifest 中的下载 url 后按状态处理（规则与 set 相同）：
 
-- `Not github`：无 github 下载链接，本工具无用武之地——提示直接执行 `scoop install <bucket/app>` 后退出（退出码 0）。
+- `Not github`：无 github 下载链接，无需处理 manifest 与 proxy——直接流式执行 `scoop install <bucket>/<app>` 安装（实时透传显示），成败以成功标志判定。
 - `Is github`：进入保护罩安装——备份并清空 scoop config 的 proxy → 把 gh_proxy 前缀写入该 app 的 bucket manifest → 流式执行 `scoop install <bucket>/<app>`（实时透传显示）→ 无论安装成败都还原 manifest → 恢复 proxy。
 - 其它状态（`Proxy set` / `Manifest error` 等）：报错退出（退出码 1）。
 
 安装成败以 scoop 的成功标志为准（与 update 相同的判定规则），结果行显示 `Installed`（绿色）或 `Install failed` / `Restore failed`（红色）；失败时在其后输出失败原因行（scoop 输出中最后命中的失败标志，如 `ERROR Download failed! ...`、`Hash check failed!`）。
 
-退出码：0 = Not github 提示或安装成功；1 = 参数/配置错误、已安装、bucket 或 app 不存在、状态不允许、proxy 清空失败、安装未成功。
+退出码：0 = 安装成功（`Installed`）；1 = 参数/配置错误、已安装、bucket 或 app 不存在、状态不允许、proxy 清空失败、安装未成功。
 
 ## 五、 获取并校验 scoop config 信息
 
@@ -325,13 +325,11 @@ scoop-gh-proxy update
 保证 update 总是从干净状态开始
         ↓
 执行 scoop status -l（不透传原始输出，按本工具的明细表格式显示），
-将 outdated apps 分为三组：
-  - Skipped / Manifest not found / Manifest error 等：显示明细，跳过
-  - Not github：逐个执行 scoop update <app_name>
-  - Is github / Proxy set：进入 proxy 保护罩阶段
-        ↓
-Not github 组：逐个流式执行 scoop update <app_name>（透传显示），
-单个失败只记录状态，继续下一个，直到全部执行完
+将 outdated apps 分组：
+  - Skipped / Manifest not found / Manifest error / Proxy set 等：显示明细，跳过
+    （Proxy set 已带前缀且无备份、无法安全还原，本次不处理）
+  - Is github：第一更新组（proxy 保护罩阶段）
+  - Not github：第二更新组（直接更新，不处理 manifest 与 proxy）
         ↓
 Is github 组（proxy 保护罩）：
   1. setScoopProxy：备份 proxy 到 gh_scoop_proxy_backup 并清空
@@ -339,11 +337,16 @@ Is github 组（proxy 保护罩）：
      - Is github：修改该 app 的 manifest（GitHub URL 加 gh_proxy 前缀）
      - 流式执行 scoop update <app_name>（透传显示）
      - 还原该 app 的 manifest（无论成败）
-     - Proxy set：URL 已带前缀、无备份，直接更新，保持原状并警告
      - 失败（未捕获成功标志）：记录 Failed，不中断，继续下一个
   3. 组结束：restoreScoopProxy 恢复 proxy（任何返回路径都保证先恢复）
         ↓
-输出汇总：成功 / 失败 / 跳过计数 + 明细表
+两组均非空时：一行横线分隔两组操作（横线前后各一空行；某组数量为零时不画横线）
+        ↓
+Not github 组：逐个流式执行 scoop update <app_name>（透传显示，
+[n/m] 序号与第一组连续编号），不处理 manifest 与 proxy，
+单个失败只记录状态，继续下一个，直到全部执行完
+        ↓
+输出汇总：成功 / 失败计数 + 明细表（覆盖两组，顺序与执行一致）
 ```
 
 #### 7.2.3 流式执行与实时扫描（scoop update <app_name>）
@@ -363,7 +366,7 @@ Is github 组（proxy 保护罩）：
 
 - `scoop update <app_name>` 有错误 → 不中断整体流程：还原该 app 的 manifest（Is github 组）、记录 Failed、继续下一个 app_name，直到都执行完
 - 所有失败在最终汇总中统一显示
-- Proxy set 状态的 app（URL 已带前缀、无备份）：直接更新，保持原状并警告
+- Proxy set 状态的 app（URL 已带前缀、无备份）：跳过不更新（无法安全还原，明细表中可见）
 
 #### 7.2.5 代码改动
 
@@ -401,6 +404,6 @@ Is github 组（proxy 保护罩）：
 
 - 点名匹配不区分大小写（与 Windows / scoop 习惯一致）；重复点名静默去重——保留首次出现的顺序，不输出任何说明（如点名为 `git GIT git`，实际只更新一次）
 - 未匹配的点名（不在 outdated 列表中，已最新或未安装）：先提示「以下 app 不在 outdated 列表中，没有可用的更新: N」，再逐行列出（带两位右对齐序号，1-9 前补空格），不进明细表与汇总
-- 匹配到的行进入与全量 `update` 完全相同的流程：分组后 Skipped / Not github 仅显示不更新，Is github / Proxy set 进 proxy 保护罩逐个更新，最后汇总
+- 匹配到的行进入与全量 `update` 完全相同的流程：分组后 Skipped / Proxy set 仅显示不更新，先 Is github 进 proxy 保护罩逐个更新，再 Not github 直接逐个更新（不处理 manifest 与 proxy），最后汇总
 - 点名中混入 `*`（如 `update app1 app2 * app3`）：提示「参数中有 * 号，忽略指定的 app 名称，按 update * 处理」，按全量更新执行；仅 `update *` 不提示
 - `update *` 与 `update` 等价（全量更新）；退出码语义与 `update` 相同

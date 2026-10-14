@@ -84,3 +84,11 @@ func InstallApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(
 	}
 	proxiedAppCmd(cfg, app, w, onProgress, "install", installSpec(app), Installed, InstallFailed)
 }
+
+// InstallPlainApp 直接安装无需 manifest/proxy 处理的 app（Not github）：
+// 流式执行 scoop install <bucket>/<app>（仍用显式桶请求，保证安装的正是
+// 定位到的那份 manifest），成败以成功标志为准。
+// w 与 onProgress 的含义同 InstallApp
+func InstallPlainApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(Progress)) {
+	runPlainApp(cfg, app, w, onProgress, "install", installSpec(app), Installed, InstallFailed)
+}

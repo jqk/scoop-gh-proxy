@@ -15,10 +15,11 @@ import (
 
 // progressPrinter 下载进度渲染器，兼作 scoop 流式输出的透传 writer（进度刷新
 // 与流式透传同写一个目标，经 mu 串行防交错）：
-//   - 终端：进度事件以 \r 回行首原地重绘一行（与 scoop aria2 进度同观感）；
-//     后续 scoop 流式输出经 Write 前先补 \n 终结进度行，避免拼接到进度行尾部
-//   - 非终端（重定向到文件、GUI 注入的 writer）：内容变化才输出一行（与
-//     scoop 层 lineFilter 的重绘折叠规则一致，两处同语义双实现是分层所需）
+//   - 进度行始终 \r 回行首原地重绘一行（终端与管道型终端渲染一致，与 scoop
+//     aria2 进度同观感），新行更短补空格覆盖残留；非终端（重定向到文件、GUI
+//     注入的 writer）内容未变不重写（与 scoop 层 lineFilter 的重绘刷新规则一致，
+//     两处同语义双实现是分层所需）
+//   - 后续 scoop 流式输出经 Write 前先补 \n 终结进度行，避免拼接到进度行尾部
 type progressPrinter struct {
 	w       io.Writer // 底层显示目标（os.Stdout / GUI 注入的 writer）
 	console bool      // 底层显示目标是否为终端（决定进度行的刷新方式）
@@ -46,23 +47,20 @@ func (p *progressPrinter) Write(buf []byte) (int, error) {
 	return p.w.Write(buf)
 }
 
-// printProgress 渲染一次下载进度（UpdateProxiedApp / InstallApp 的进度回调入口）
+// printProgress 渲染一次下载进度（UpdateProxiedApp / UpdatePlainApp / InstallApp /
+// InstallPlainApp 的进度回调入口）
 func (p *progressPrinter) printProgress(ev scoop.Progress) {
 	line := renderDownloadLine(ev.File, ev.Downloaded, ev.Total)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if !p.console {
-		if line == p.last {
-			return
-		}
-		p.last = line
-		fmt.Fprintln(p.w, line)
-		return
+	if !p.console && line == p.last {
+		return // 内容未变不重写
 	}
+	p.last = line
 
-	// 终端：\r 回行首重绘；新行更短时补空格覆盖上一行的残留字符
+	// \r 回行首重绘；新行更短时补空格覆盖上一行的残留字符
 	if len(line) < p.lastLen {
 		line += strings.Repeat(" ", p.lastLen-len(line))
 	} else {

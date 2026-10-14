@@ -25,31 +25,33 @@ func (r *byteReader) Read(p []byte) (int, error) {
 
 func TestStreamPipeDisplayNormalization(t *testing.T) {
 	// 非终端模式：行归一（\r+ 及其后至多一个 \n 为一个行结束、空行与纯空白行
-	// 丢弃、行尾空白裁剪、行首缩进保留、行首 \r 不产生换行），
-	// \r 重绘（\r 后跟新内容）视为同一行的状态更新、内容变化才输出
+	// 丢弃、行尾空白裁剪、行首缩进保留、行首 \r 不产生换行）。
+	// \r 重绘（\r 后跟新内容）视为同一显示行的状态更新：\r 重写该行（更短补空格
+	// 覆盖残留），被换行终结的行覆写落定（行首 \r 落在未换行的重绘行上）
 	cases := []struct {
 		name string
 		in   string
 		want string
 	}{
-		{"裸 CR 后跟新内容：重绘，输出上一状态", "a\rb", "a\nb\n"},
+		{"裸 CR 后跟新内容：重绘刷新同一显示行", "a\rb", "a\rb\n"},
 		{"已有 CRLF：常规行", "a\r\nb", "a\nb\n"},
 		{"纯 LF：常规行", "a\nb", "a\nb\n"},
 		{"无换行：EOF 补换行", "abc", "abc\n"},
-		{"进度行重绘各状态不同：逐条输出", "\rDownload: [50%]\rDownload: [100%]\n", "Download: [50%]\nDownload: [100%]\n"},
-		{"连续相同重绘折叠为一行", "\rP\rP\rP\rP2\r\n", "P\nP2\n"},
-		{"重绘被常规行终结：常规行总是输出", "\rP\rP\rResults\r\nNext\r\n", "P\nResults\nNext\n"},
+		{"进度行重绘各状态不同：\\r 重写同一显示行", "\rDownload: [50%]\rDownload: [100%]\n", "Download: [50%]\rDownload: [100%]\n"},
+		{"连续相同重绘折叠", "\rP\rP\rP\rP2\r\n", "P\rP2\n"},
+		{"重绘行被换行终结的行覆写落定", "\rP\rP\rResults\r\nNext\r\n", "P\rResults\nNext\n"},
+		{"重绘变短补空格覆盖残留", "\rAAA\rB\r\n", "AAA\rB  \n"},
 		{"结尾悬挂 CR：EOF 补换行", "abc\r", "abc\n"},
 		{"重复行尾 CR CR LF 折叠为一次换行", "a\r\r\nb", "a\nb\n"},
-		{"连续 CR 折叠为一次换行", "a\rrb", "a\nrb\n"},
+		{"连续 CR：后内容重绘同一显示行", "a\rrb", "a\rrb\n"},
 		{"CRLF 空行丢弃", "a\r\n\r\nb", "a\nb\n"},
 		{"LF 空行丢弃", "a\n\nb", "a\nb\n"},
 		{"纯空白行丢弃（aria2 填充）", "row1\r\n   \r\nrow2", "row1\nrow2\n"},
-		{"重绘序列中的空白状态不产生输出", "P\r   \rQ\r\n", "P\nQ\n"},
+		{"重绘序列中的空白状态不产生输出", "P\r   \rQ\r\n", "P\rQ\n"},
 		{"行尾空白裁剪", "Download: Results:   \r\n", "Download: Results:\n"},
 		{"行首缩进保留", "  indented\r\n", "  indented\n"},
 		{"全空白输入", "   \r\n", ""},
-		{"重绘保留 ANSI 颜色", "\r\x1b[36mP\x1b[0m\r\x1b[36mP\x1b[0m\r\x1b[36mP2\x1b[0m\r\n", "\x1b[36mP\x1b[0m\n\x1b[36mP2\x1b[0m\n"},
+		{"重绘保留 ANSI 颜色", "\r\x1b[36mP\x1b[0m\r\x1b[36mP\x1b[0m\r\x1b[36mP2\x1b[0m\r\n", "\x1b[36mP\x1b[0m\r\x1b[36mP2\x1b[0m\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -113,16 +115,20 @@ func TestStreamPipeSplitsLinesOnCR(t *testing.T) {
 
 func TestStreamPipeScoopAria2Download(t *testing.T) {
 	// 模拟 aria2 启用时的完整 scoop 下载块：进度行以 \r 前缀重绘、无换行
-	// （真实终端里原地覆盖、整段只占一行），结果表行以换行结尾，行尾带擦除填充
+	// （真实终端里原地覆盖、整段只占一行），结果表行以换行结尾，行尾带擦除填充。
+	// 非终端模式同样单行刷新：整段进度以 \r 重写同一显示行，Download Results 行
+	// （换行终结）覆写落定该行，其后的表行各占一行
 	input := "Starting download with aria2...\r\n" +
 		"\rDownload: [#x 0B/0B CN:1 DL:0B]   \rDownload: [#x 0B/0B CN:1 DL:0B]   \rDownload: [#x 0B/0B CN:1 DL:0B]   \rDownload: [#x 1.2MiB/28MiB(4%) CN:4 DL:1.3MiB ETA:20s]   \rDownload: Download Results:   \r\n" +
 		"\rDownload: gid   |stat|avg speed  |path/URI   \r\n" +
 		"\rDownload: (OK):download completed.   \n"
 
+	p4 := "Download: [#x 1.2MiB/28MiB(4%) CN:4 DL:1.3MiB ETA:20s]"
+	results := "Download: Download Results:"
 	wantDisplay := "Starting download with aria2...\n" +
-		"Download: [#x 0B/0B CN:1 DL:0B]\n" +
-		"Download: [#x 1.2MiB/28MiB(4%) CN:4 DL:1.3MiB ETA:20s]\n" +
-		"Download: Download Results:\n" +
+		"Download: [#x 0B/0B CN:1 DL:0B]" +
+		"\r" + p4 +
+		"\r" + results + strings.Repeat(" ", len(p4)-len(results)) + "\n" +
 		"Download: gid   |stat|avg speed  |path/URI\n" +
 		"Download: (OK):download completed.\n"
 

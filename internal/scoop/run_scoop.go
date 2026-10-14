@@ -123,15 +123,18 @@ func IsConsole(w io.Writer) bool {
 //   - 行归一：\r+ 及其后至多一个 \n 视为一个行结束（\r\r\n 重复行尾常见）；
 //     行首 \r（进度行前置回车）不产生换行
 //   - 空行与纯空白行不输出（aria2 非终端模式的填充）；行尾空白裁剪；行首缩进保留
-//   - 重绘折叠：\r 之后跟新内容视为同一行的状态更新（aria2 进度行由 scoop 以
-//     Write-Host "`r..." -NoNewLine 输出，真实终端里原地覆盖、整段下载只占一行）。
-//     重定向到文件或 GUI writer 无法覆盖刷新，连续相同的重绘折叠为一行，
-//     内容变化时才作为新行输出——不刷屏、不丢状态
+//   - 重绘行单行刷新：\r 之后跟新内容视为同一显示行的状态更新（aria2 进度行由
+//     scoop 以 Write-Host "`r..." -NoNewLine 输出，真实终端里原地覆盖、整段下载
+//     只占一行）。内容变化时以 \r 重写该显示行（更短时补空格覆盖残留），内容相同
+//     跳过；该行保持未落定，直到被换行终结的行到来才补 \n 落定——行首 \r 使其
+//     覆写在未换行的重绘行上，与终端行为一致。管道型终端（mintty 等）据此同样
+//     单行刷新；重定向到文件时一段进度只占一行、以最后状态为准
 type lineFilter struct {
 	buf        []byte // 当前未终结的行内容（含行首缩进，行尾空白在终结时裁剪）
 	lineOpen   bool   // buf 是否为一条待终结的行
 	pendingCR  bool   // 刚读过 \r（可连续），其后续字节决定它是行结束还是重绘开始
-	lastRedraw []byte // 最近一次输出的重绘行内容，重绘去重的比较基准
+	redrawOpen bool   // 显示侧是否有一行未落定的重绘行（等待覆写或 \n 落定）
+	lastRedraw []byte // 重绘行最近一次写出的内容：内容比对与残留覆盖宽度的基准
 }
 
 // filter 归一一个字节块，返回应写入显示侧的字节
@@ -163,35 +166,55 @@ func (f *lineFilter) filter(chunk []byte) []byte {
 	return out
 }
 
-// finalize 终结当前行，返回应写出的内容（含换行）。redraw 为 true 表示该行已被
-// 后续重绘覆盖、参与去重。line 是 f.buf 的子切片，本方法返回前完成全部复制
-// （lastRedraw 与返回值均独立于 buf 复用）
+// finalize 终结当前行，返回应写出的内容。redraw 为 true 表示该行已被后续重绘覆盖：
+// 以 \r 重写显示行并保持未落定；false 表示换行终结的常规行——若显示上有未落定的
+// 重绘行则同样覆写该行（行首 \r 使其落在未换行的重绘行上，与终端一致）后补 \n 落定。
+// line 是 f.buf 的子切片，本方法返回前完成全部复制（lastRedraw 与返回值均独立于 buf 复用）
 func (f *lineFilter) finalize(redraw bool) []byte {
 	line := bytes.TrimRight(f.buf, " \t")
 	f.lineOpen = false
 	f.buf = f.buf[:0]
+
 	if len(bytes.TrimSpace(line)) == 0 {
-		return nil // 空行与纯空白行不输出
+		return nil // 空行与纯空白行不输出；空白重绘不影响画面上的重绘行
 	}
-	if redraw {
-		if bytes.Equal(line, f.lastRedraw) {
-			return nil // 重绘内容未变化
-		}
-		f.lastRedraw = append(f.lastRedraw[:0], line...)
+
+	overwrite := f.redrawOpen // 画面上有未落定的重绘行：本行覆写它
+	if overwrite && redraw && bytes.Equal(line, f.lastRedraw) {
+		return nil // 重绘内容未变化
 	}
-	out := make([]byte, 0, len(line)+1)
+
+	pad := 0
+	if overwrite && len(line) < len(f.lastRedraw) {
+		pad = len(f.lastRedraw) - len(line) // 新行更短时补空格覆盖残留
+	}
+	out := make([]byte, 0, len(line)+pad+1)
+	if overwrite {
+		out = append(out, '\r')
+	}
 	out = append(out, line...)
-	return append(out, '\n')
+	out = append(out, bytes.Repeat([]byte{' '}, pad)...)
+	if redraw {
+		f.redrawOpen = true // 重绘行继续保持未落定
+		f.lastRedraw = append(f.lastRedraw[:0], line...)
+	} else {
+		f.redrawOpen = false // 换行终结：落定
+		f.lastRedraw = f.lastRedraw[:0]
+		out = append(out, '\n')
+	}
+	return out
 }
 
-// finish 返回流结尾未终结行的输出：按重绘处理（末条重绘与已输出内容相同时
-// 不重复输出），常规未竟行内容必有差异、不受影响
+// finish 返回流结尾未终结行的输出：画面上有未落定的重绘行时，未竟内容作为该行的
+// 最新状态刷新后补 \n 落定；普通未竟行按常规行收尾
 func (f *lineFilter) finish() []byte {
 	f.pendingCR = false
-	if !f.lineOpen {
-		return nil
+	out := f.finalize(true)
+	if f.redrawOpen {
+		out = append(out, '\n') // 画面上的重绘行随流结束落定
+		f.redrawOpen = false
 	}
-	return f.finalize(true)
+	return out
 }
 
 // streamPipe 把 r 的字节实时写入 w（经 mu 加锁，供两个管道协程共用），

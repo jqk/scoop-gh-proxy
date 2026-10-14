@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -91,7 +92,7 @@ func RunStatus() int {
 }
 
 // ---------------------------------------------------------------------------
-// update（自动化更新：清理遗留 → 分组 → 保护罩内逐个 scoop update <app> → 恢复 proxy → 汇总）
+// update（自动化更新：清理遗留 → 分组 → Proxied 组保护罩内更新 → Not github 组直接更新 → 汇总）
 // update [app...]：点名时只更新匹配到的 app；update * 与 update 等价
 // ---------------------------------------------------------------------------
 
@@ -145,19 +146,19 @@ func RunUpdate(args []string) int {
 	}
 
 	// 分组明细：status -l 解析出的更新目标及其归类（点名更新时为匹配到的 app）
-	info("Apps outdated: %d, to update: %d", len(plan.All), len(plan.Proxied))
+	info("Apps outdated: %d, to update: %d", len(plan.All), len(plan.Proxied)+len(plan.NotGithub))
 	if len(plan.All) == 0 {
 		return 0
 	}
 	printSetTable(plan.All)
 	fmt.Println()
 
-	total := len(plan.Proxied) // 表头分母与循环一致：只数 Proxied 组（Is github / Proxy set）
+	total := len(plan.Proxied) + len(plan.NotGithub) // 表头分母与循环一致：两组连续编号
 	done := 0
 
-	// 只更新 Proxied 组（Is github / Proxy set）；Skipped / Not github 组保留待用。
-	// 全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），组结束处恢复。
-	// 所有提前 return 都发生在清空之前，无需 defer 兜底
+	// 第一组：Proxied（Is github），proxy 保护罩内更新；Skipped（含 Proxy set）组
+	// 保留待用不更新。全部 scoop update 之前清空 proxy（备份到 gh_scoop_proxy_backup），
+	// 组结束处恢复。所有提前 return 都发生在清空之前，无需 defer 兜底
 	if len(plan.Proxied) > 0 {
 		if err := scoop.ClearScoopProxy(&cfg); err != nil {
 			errorf("备份并清空 scoop config proxy 失败: %s", err)
@@ -165,16 +166,7 @@ func RunUpdate(args []string) int {
 		}
 
 		for _, app := range plan.Proxied {
-			fmt.Println() // 每个 app 的输出块之间空一行分隔
-			if app.Status == scoop.ProxySet {
-				caution("%s: manifest 已带 gh_proxy 前缀且无备份，更新后保持原状", app.Name)
-			}
-			done++
-			info("[%d/%d] %s", done, total, app.Name)
-			pp := newProgressPrinter(os.Stdout)
-			scoop.UpdateProxiedApp(&cfg, app, pp, pp.printProgress)
-			pp.finishLine()
-			printAppOutcome(app)
+			done = runUpdateApp(&cfg, app, done, total, scoop.UpdateProxiedApp)
 		}
 
 		if err := scoop.RestoreScoopProxy(&cfg); err != nil {
@@ -182,12 +174,36 @@ func RunUpdate(args []string) int {
 		}
 	}
 
+	// 第二组：Not github，不处理 manifest 与 proxy，直接更新。
+	// 两组都有 app 时以横线分隔（横线后的空行由下一组首个 app 块的空行承担）
+	if len(plan.Proxied) > 0 && len(plan.NotGithub) > 0 {
+		printGroupSeparator()
+	}
+	for _, app := range plan.NotGithub {
+		done = runUpdateApp(&cfg, app, done, total, scoop.UpdatePlainApp)
+	}
+
 	printUpdateSummary(&plan)
 	return 0
 }
 
+// runUpdateApp 执行单个 app 的更新块：空行分隔 + [n/m] 表头 + 流式更新 + 结果行，
+// 返回递增后的完成计数。update 为该组共用的逐 app 更新入口（Proxied / Not github 组不同）
+func runUpdateApp(cfg *scoop.ScoopConfig, app *scoop.ManagedApp, done, total int,
+	update func(*scoop.ScoopConfig, *scoop.ManagedApp, io.Writer, func(scoop.Progress))) int {
+	fmt.Println() // 每个 app 的输出块之间空一行分隔
+	done++
+	info("[%d/%d] %s", done, total, app.Name)
+	pp := newProgressPrinter(os.Stdout)
+	update(cfg, app, pp, pp.printProgress)
+	pp.finishLine()
+	printAppOutcome(app)
+	return done
+}
+
 // ---------------------------------------------------------------------------
-// install（单 app 安装：定位 bucket manifest → 状态门控 → Is github 保护罩内安装 → 恢复）
+// install（单 app 安装：定位 bucket manifest → 状态门控 → Is github 保护罩内安装 /
+// Not github 直接安装 → 汇总退出码）
 // ---------------------------------------------------------------------------
 
 // parseInstallArg 解析 install 参数：<bucket/app>，bucket 可省略（省略时为 <app>）。
@@ -207,7 +223,7 @@ func parseInstallArg(arg string) (bucket, app string, err error) {
 }
 
 // RunInstall install <bucket/app>：定位 bucket manifest 并分析状态。
-// Not github 提示直接用 scoop install；Is github 在保护罩内安装
+// Not github 直接流式安装（不处理 manifest 与 proxy）；Is github 在保护罩内安装
 // （gh_proxy 前缀 + 清空 proxy，结束后无论成败都恢复）；其它状态报错。
 // 返回退出码：1 = 配置/参数错误、已安装、bucket 或 app 不存在、状态不允许、
 // proxy 清空失败、安装未成功（未捕获成功标志或还原失败）
@@ -242,9 +258,11 @@ func RunInstall(args []string) int {
 
 	switch rec.Status {
 	case scoop.NotGitHub:
-		// 无 github 下载链接，本工具无用武之地
-		info("%s: Not github，无需本工具处理，直接执行: scoop install %s", spec, spec)
-		return 0
+		// 无 github 下载链接，无需处理 manifest 与 proxy，直接流式安装（仍用显式桶请求）
+		info("%s: Not github，直接安装（不处理 manifest 与 proxy）", spec)
+		pp := newProgressPrinter(os.Stdout)
+		scoop.InstallPlainApp(&cfg, &rec, pp, pp.printProgress)
+		pp.finishLine()
 	case scoop.IsGitHub:
 		info("%s: Is github，安装期间临时应用 gh_proxy 前缀，结束后还原", spec)
 

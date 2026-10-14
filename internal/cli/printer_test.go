@@ -109,17 +109,19 @@ func TestHumanSize(t *testing.T) {
 }
 
 func TestProgressPrinterLines(t *testing.T) {
-	// 非终端（bytes.Buffer）：内容变化才输出一行
+	// 非终端（bytes.Buffer）：进度行同样 \r 单行刷新，内容未变不重写；
+	// finishLine 补换行落定
 	var buf bytes.Buffer
 	p := newProgressPrinter(&buf)
 
 	first := renderDownloadLine("f.zip", 1024, 4096)
 	second := renderDownloadLine("f.zip", 2048, 4096)
 	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 1024, Total: 4096})
-	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 1024, Total: 4096}) // 内容未变，不再输出
+	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 1024, Total: 4096}) // 内容未变，不再重写
 	p.printProgress(scoop.Progress{File: "f.zip", Downloaded: 2048, Total: 4096})
+	p.finishLine()
 
-	want := first + "\n" + second + "\n"
+	want := "\r" + first + "\r" + second + "\n"
 	if got := buf.String(); got != want {
 		t.Errorf("非终端进度输出不符\n got: %q\nwant: %q", got, want)
 	}

@@ -15,9 +15,9 @@ import (
 type UpdatePlan struct {
 	Leftovers []ManagedApp  // 开工前自动还原的遗留备份（Status 为 Success / Failed）。这是因为再次执行 update 时，gh_proxy 可能不同
 	All       []ManagedApp  // 更新目标在 scoop status -l 中的行（按原顺序），Status 为分组结果；全量更新为全部行，点名更新为匹配到的行
-	Skipped   []*ManagedApp // 不处理：Skipped、Manifest not found、Manifest error 等（保留待用）
-	NotGithub []*ManagedApp // 无待修改 URL，可直接更新（保留待用，当前不更新）
-	Proxied   []*ManagedApp // Is github / Proxy set，本次更新的处理组
+	Skipped   []*ManagedApp // 不处理：Skipped、Manifest not found、Manifest error、Proxy set 等（保留待用）。Proxy set：已带前缀且无备份，无法安全还原，本次跳过
+	NotGithub []*ManagedApp // 无待修改 URL，第二更新组：不处理 manifest 与 proxy，直接更新
+	Proxied   []*ManagedApp // Is github，第一更新组：proxy 保护罩内更新
 	NoUpdate  []string      // 点名更新（update <app...>）时：点名但不在 outdated 列表中的 app（已最新或未安装），无可更新；全量更新时为空
 }
 
@@ -52,11 +52,11 @@ func PrepareUpdate(cfg *ScoopConfig, requested []string) (UpdatePlan, error) {
 		prepareAppManifest(cfg, app) // 分析结果记录在 app.Status
 
 		switch app.Status {
-		case IsGitHub, ProxySet:
+		case IsGitHub:
 			plan.Proxied = append(plan.Proxied, app)
 		case NotGitHub:
 			plan.NotGithub = append(plan.NotGithub, app)
-		default:
+		default: // Skipped、Manifest not found / error、Proxy set 等：本次不处理
 			plan.Skipped = append(plan.Skipped, app)
 		}
 	}
@@ -98,23 +98,20 @@ func pickRequestedApps(apps []ManagedApp, requested []string) (picked []ManagedA
 // 逐个更新
 // ---------------------------------------------------------------------------
 
-// UpdateProxiedApp 更新 proxy 保护罩内的 app：
-//   - Is github：先把 gh_proxy 前缀写入 manifest，更新后无论成败都还原 manifest
-//   - Proxy set：URL 已带前缀、无备份，直接更新并保持 manifest 原状（由输出层警告）
+// UpdateProxiedApp 更新 proxy 保护罩内的 app（Is github）：
+// 先把 gh_proxy 前缀写入 manifest，更新后无论成败都还原 manifest。
+// 分组已保证 Proxied 组只含 IsGitHub，其它状态由 proxiedAppCmd 内部防御性跳过。
 //
 // w 为 scoop 输出的透传流（原始字节，展示策略由调用方决定）；
 // onProgress 为结构化下载进度回调（nil = 不需要），核心层不生成任何展示文本。
 // 失败只记录在 app.Status，不中断整体流程
 func UpdateProxiedApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(Progress)) {
-	if app.Status == IsGitHub {
-		proxiedAppCmd(cfg, app, w, onProgress, "update", app.Name, Updated, UpdateFailed)
-		return
-	}
-	// Proxy set：直接执行，manifest 不动
-	r := runScoopForApp(cfg, w, onProgress, "update", app.Name)
-	app.Failure = r.failureLine
-	app.Status = UpdateFailed
-	if r.successSeen {
-		app.Status = Updated
-	}
+	proxiedAppCmd(cfg, app, w, onProgress, "update", app.Name, Updated, UpdateFailed)
+}
+
+// UpdatePlainApp 更新无需 manifest/proxy 处理的 app（Not github 组）：
+// 直接流式执行 scoop update <app>，成败以成功标志为准。
+// w 与 onProgress 的含义同 UpdateProxiedApp，失败只记录在 app.Status，不中断整体流程
+func UpdatePlainApp(cfg *ScoopConfig, app *ManagedApp, w io.Writer, onProgress func(Progress)) {
+	runPlainApp(cfg, app, w, onProgress, "update", app.Name, Updated, UpdateFailed)
 }

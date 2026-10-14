@@ -125,18 +125,28 @@ func printAppOutcome(app *scoop.ManagedApp) {
 	}
 }
 
-// printUpdateSummary 输出更新汇总：计数 + 更新结果明细表（仅覆盖本次更新的 Proxied 组）
+// printGroupSeparator 输出 update 两组操作之间的分隔横线（横线前一空行由本函数输出，
+// 横线后一空行由下一组首个 app 块的空行承担）；两组任一为空时调用方不调用本函数
+func printGroupSeparator() {
+	fmt.Println()
+	fmt.Println(dashRun(64))
+}
+
+// printUpdateSummary 输出更新汇总：计数 + 更新结果明细表（覆盖本次更新的
+// Proxied 与 Not github 两组，顺序与执行顺序一致）
 func printUpdateSummary(plan *scoop.UpdatePlan) {
 	updated, failed := 0, 0
-	results := make([]scoop.ManagedApp, 0, len(plan.Proxied))
-	for _, app := range plan.Proxied {
-		switch app.Status {
-		case scoop.Updated:
-			updated++
-		case scoop.UpdateFailed, scoop.RestoreFailed:
-			failed++
+	results := make([]scoop.ManagedApp, 0, len(plan.Proxied)+len(plan.NotGithub))
+	for _, group := range [][]*scoop.ManagedApp{plan.Proxied, plan.NotGithub} {
+		for _, app := range group {
+			switch app.Status {
+			case scoop.Updated:
+				updated++
+			case scoop.UpdateFailed, scoop.RestoreFailed:
+				failed++
+			}
+			results = append(results, *app)
 		}
-		results = append(results, *app)
 	}
 
 	fmt.Println()
