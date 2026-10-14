@@ -4,23 +4,27 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestDownloadProgressFeed(t *testing.T) {
+	const uvURL = "https://github.com/astral-sh/uv/releases/download/0.13.0/uv-x86_64-pc-windows-msvc.zip"
 	cases := []struct {
-		name  string
-		line  string
-		total int64
+		name   string
+		line   string
+		total  int64
+		target string // 期望的轮询目标；空 = 该行不构成目标
 	}{
-		{"MB", "Downloading https://github.com/astral-sh/uv/releases/download/0.13.0/uv-x86_64-pc-windows-msvc.zip (15.0 MB)...", 15 * 1024 * 1024},
-		{"GB", "Downloading https://example.com/big.7z (1.5 GB)...", int64(1.5 * 1024 * 1024 * 1024)},
-		{"KB", "Downloading https://example.com/small.zip (3.4 KB)...", 3481}, // 3.4*1024=3481.6，截断
-		{"B", "Downloading https://example.com/tiny.bin (512 B)...", 512},
-		{"千分位逗号", "Downloading https://example.com/a.zip (1,234.5 KB)...", int64(1234.5 * 1024)},
-		{"无总量括号（Downloading new version）", "Downloading new version", 0},
-		{"普通行", "Checking hash of uv.zip... OK.", 0},
+		{"MB", "Downloading " + uvURL + " (15.0 MB)...", 15 * 1024 * 1024, cacheTag(uvURL)},
+		{"GB", "Downloading https://example.com/big.7z (1.5 GB)...", int64(1.5 * 1024 * 1024 * 1024), cacheTag("https://example.com/big.7z")},
+		{"KB", "Downloading https://example.com/small.zip (3.4 KB)...", 3481, cacheTag("https://example.com/small.zip")}, // 3.4*1024=3481.6，截断
+		{"B", "Downloading https://example.com/tiny.bin (512 B)...", 512, cacheTag("https://example.com/tiny.bin")},
+		{"千分位逗号", "Downloading https://example.com/a.zip (1,234.5 KB)...", int64(1234.5 * 1024), cacheTag("https://example.com/a.zip")},
+		{"总量未知（Content-Length 缺失）", "Downloading https://example.com/x.zip (unknown)...", 0, cacheTag("https://example.com/x.zip")},
+		{"无总量括号（Downloading new version）", "Downloading new version", 0, ""},
+		{"普通行", "Checking hash of uv.zip... OK.", 0, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -31,7 +35,25 @@ func TestDownloadProgressFeed(t *testing.T) {
 			if d.total != c.total {
 				t.Errorf("total = %d, want %d", d.total, c.total)
 			}
+			if d.target != c.target {
+				t.Errorf("target = %q, want %q", d.target, c.target)
+			}
 		})
+	}
+}
+
+// TestCacheTag 与 scoop 真实运行的对照：URL 经 core.ps1 cache_path 规则
+// （sha256 小写十六进制前 7 位 + 扩展名）落盘的 cache 文件名哈希段，
+// 取自 2026-10 实际运行的日志，防算法复刻漂移
+func TestCacheTag(t *testing.T) {
+	cases := []struct{ url, hash string }{
+		{"https://v4.gh-proxy.org/https://github.com/farion1231/cc-switch/releases/download/v4.0.11/CC-Switch-v4.0.11-Windows-Portable.zip", "cd9b730"},
+		{"https://v4.gh-proxy.org/https://github.com/pnpm/pnpm/releases/download/v12.13.0/pnpm-win32-x64.zip", "33c4cc0"},
+	}
+	for _, c := range cases {
+		if got := cacheTag(c.url); got != "#"+c.hash {
+			t.Errorf("cacheTag(%q) = %q, want #%s", c.url, got, c.hash)
+		}
 	}
 }
 
@@ -56,18 +78,18 @@ func TestDownloadProgressTickEmits(t *testing.T) {
 	if err := os.Mkdir(cacheDir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	const url = "https://example.com/uv.zip"
+	name := "uv#0.13.0#" + strings.TrimPrefix(cacheTag(url), "#") + ".zip"
 	var got []Progress
 	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
-	d.mu.Lock()
-	d.total = 1000
-	d.mu.Unlock()
+	d.feed("Downloading " + url + " (1000 B)...") // 总量与轮询目标
 
 	d.tick() // cache 目录为空：不应有事件
 	if len(got) != 0 {
 		t.Fatalf("无下载文件时不应上报，实际 %v", got)
 	}
 
-	file := filepath.Join(cacheDir, "uv#0.13.0#a48fd9a.zip.download")
+	file := filepath.Join(cacheDir, name+".download")
 	resize := func(n int) {
 		if err := os.WriteFile(file, make([]byte, n), 0644); err != nil {
 			t.Fatal(err)
@@ -91,7 +113,7 @@ func TestDownloadProgressTickEmits(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("期望 1 个事件，实际 %v", got)
 	}
-	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 500, Total: 1000}
+	want := Progress{File: name, Downloaded: 500, Total: 1000}
 	if got[0] != want {
 		t.Errorf("事件不符: got %+v, want %+v", got[0], want)
 	}
@@ -105,8 +127,62 @@ func TestDownloadProgressTickEmits(t *testing.T) {
 	}
 }
 
+// TestDownloadProgressTickIgnoresConcurrentForeignDownload cache 目录为所有
+// scoop 进程共享：另一窗口的 scoop 正在下载其它 app（其 *.download 持续增长、
+// mtime 更新），本程序的进度只跟踪自己的 URL。回归：曾按 mtime 盲选把并发
+// 下载的文件画进本程序画面，还配着本程序解析到的总量错报百分比
+func TestDownloadProgressTickIgnoresConcurrentForeignDownload(t *testing.T) {
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "cache")
+	if err := os.Mkdir(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	const url = "https://example.com/pnpm.zip"
+	name := "pnpm#12.13.0#" + strings.TrimPrefix(cacheTag(url), "#") + ".zip"
+	foreign := filepath.Join(cacheDir, "firefox#158.0#71b6569.7z.download")
+	own := filepath.Join(cacheDir, name+".download")
+	var got []Progress
+	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
+	write := func(path string, n int) {
+		if err := os.WriteFile(path, make([]byte, n), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bypass := func() { // 绕过限频
+		d.mu.Lock()
+		d.lastAt = time.Now().Add(-time.Hour)
+		d.mu.Unlock()
+	}
+
+	// 未见 Downloading 行（无目标）的窗口：别人的下载独自增长也不得上报
+	write(foreign, 10<<20)
+	bypass()
+	d.tick()
+	if len(got) != 0 {
+		t.Fatalf("未见 Downloading 行时并发下载不应上报，实际 %v", got)
+	}
+
+	// 目标已知后两个文件都在增长（foreign 后写、mtime 更新），只跟踪自己的
+	d.feed("Downloading " + url + " (2000 B)...")
+	write(own, 100)
+	bypass()
+	d.tick() // 首拍基线
+	write(foreign, 11<<20)
+	write(own, 1000)
+	bypass()
+	d.tick()
+	if len(got) != 1 {
+		t.Fatalf("期望只上报自己的下载，实际 %v", got)
+	}
+	want := Progress{File: name, Downloaded: 1000, Total: 2000}
+	if got[0] != want {
+		t.Errorf("事件不符: got %+v, want %+v", got[0], want)
+	}
+}
+
 // TestDownloadProgressTickIgnoresStaleDownload 陈旧 .download（上次中断下载遗留、
-// 大小不再变化）永不上报。回归：曾在 scoop 输出首行前把遗留半成品当成正在下载
+// 大小不再变化）永不上报——即便其名字与本次下载的目标相同（同 URL 重下）。
+// 回归：曾在 scoop 输出首行前把遗留半成品当成正在下载
 // 误报一帧（total 未知、lastAt 零值使首拍立即放行），下载完成后同文件还会顶替进来错报
 func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
 	root := t.TempDir()
@@ -114,12 +190,13 @@ func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
 	if err := os.Mkdir(cacheDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	var got []Progress
-	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
-	file := filepath.Join(cacheDir, "xpipe#24.6#2c75734.zip.download")
-	if err := os.WriteFile(file, make([]byte, 1<<20), 0644); err != nil {
+	const url = "https://example.com/xpipe.zip"
+	stale := filepath.Join(cacheDir, "xpipe#24.6#"+strings.TrimPrefix(cacheTag(url), "#")+".zip.download")
+	if err := os.WriteFile(stale, make([]byte, 1<<20), 0644); err != nil {
 		t.Fatal(err)
 	}
+	var got []Progress
+	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
 
 	tick := func() {
 		d.mu.Lock()
@@ -128,23 +205,21 @@ func TestDownloadProgressTickIgnoresStaleDownload(t *testing.T) {
 		d.tick()
 	}
 
-	// 现场一：scoop 尚未输出（total 未知）的启动窗口
+	// 现场一：scoop 尚未输出（无目标）的启动窗口
 	for range 3 {
 		tick()
 	}
 	if len(got) != 0 {
-		t.Fatalf("total 未知时陈旧文件不应上报，实际 %v", got)
+		t.Fatalf("无目标时陈旧文件不应上报，实际 %v", got)
 	}
 
-	// 现场二：Downloading 行已解析（total 已知）后，真实下载完成、陈旧文件顶替进来
-	d.mu.Lock()
-	d.total = 35 * 1024 * 1024
-	d.mu.Unlock()
+	// 现场二：Downloading 行已解析（目标同名、总量已知）后，陈旧文件仍不增长
+	d.feed("Downloading " + url + " (35.0 MB)...")
 	for range 3 {
 		tick()
 	}
 	if len(got) != 0 {
-		t.Fatalf("total 已知时陈旧文件不应上报，实际 %v", got)
+		t.Fatalf("目标已知时陈旧文件不应上报，实际 %v", got)
 	}
 }
 
@@ -156,11 +231,11 @@ func TestDownloadProgressComplete(t *testing.T) {
 	if err := os.Mkdir(cacheDir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	const url = "https://example.com/uv.zip"
+	name := "uv#0.13.0#" + strings.TrimPrefix(cacheTag(url), "#") + ".zip"
 	var got []Progress
 	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
-	d.mu.Lock()
-	d.total = 1000
-	d.mu.Unlock()
+	d.feed("Downloading " + url + " (1000 B)...")
 
 	var dNil *downloadProgress
 	dNil.complete() // nil-safe：不应 panic
@@ -169,7 +244,7 @@ func TestDownloadProgressComplete(t *testing.T) {
 		t.Fatalf("未跟踪下载时不应补报，实际 %v", got)
 	}
 
-	file := filepath.Join(cacheDir, "uv#0.13.0#a48fd9a.zip.download")
+	file := filepath.Join(cacheDir, name+".download")
 	write := func(n int) {
 		if err := os.WriteFile(file, make([]byte, n), 0644); err != nil {
 			t.Fatal(err)
@@ -205,7 +280,7 @@ func TestDownloadProgressComplete(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("期望补报后 2 个事件，实际 %v", got)
 	}
-	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 1000, Total: 1000}
+	want := Progress{File: name, Downloaded: 1000, Total: 1000}
 	if got[1] != want {
 		t.Errorf("收尾事件不符: got %+v, want %+v", got[1], want)
 	}
@@ -218,19 +293,19 @@ func TestDownloadProgressComplete(t *testing.T) {
 }
 
 // TestDownloadProgressCompleteAfterStaleReplaces 真实下载完成改名后、下一行输出前，
-// 陈旧 .download 顶替进 tick 的跟踪（lastName 被覆盖），complete 仍应针对曾增长的
-// 真实文件（active）补报 100%
+// cache 里其它 *.download 顶替进 tick 的视野（名字过滤后不匹配目标、只记基线），
+// complete 仍应针对曾增长的真实文件（active）补报 100%
 func TestDownloadProgressCompleteAfterStaleReplaces(t *testing.T) {
 	root := t.TempDir()
 	cacheDir := filepath.Join(root, "cache")
 	if err := os.Mkdir(cacheDir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	const url = "https://example.com/uv.zip"
+	name := "uv#0.13.0#" + strings.TrimPrefix(cacheTag(url), "#") + ".zip"
 	var got []Progress
 	d := newDownloadProgress(func(p Progress) { got = append(got, p) }, root)
-	d.mu.Lock()
-	d.total = 1000
-	d.mu.Unlock()
+	d.feed("Downloading " + url + " (1000 B)...")
 
 	stale := filepath.Join(cacheDir, "stale#1.0#deadbeef.zip.download")
 	if err := os.WriteFile(stale, make([]byte, 1<<20), 0644); err != nil {
@@ -239,7 +314,7 @@ func TestDownloadProgressCompleteAfterStaleReplaces(t *testing.T) {
 	if err := os.Chtimes(stale, time.Now().Add(-time.Hour), time.Now().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(cacheDir, "uv#0.13.0#a48fd9a.zip.download")
+	file := filepath.Join(cacheDir, name+".download")
 	if err := os.WriteFile(file, make([]byte, 100), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +331,7 @@ func TestDownloadProgressCompleteAfterStaleReplaces(t *testing.T) {
 	if err := os.Remove(file); err != nil { // 下载完成：改名挪走
 		t.Fatal(err)
 	}
-	d.tick() // 陈旧文件顶替进跟踪：只记基线、不上报
+	d.tick() // 陈旧文件顶替进视野：不匹配目标、不上报
 	if len(got) != 1 {
 		t.Fatalf("陈旧文件顶替不应上报，实际 %v", got)
 	}
@@ -264,7 +339,7 @@ func TestDownloadProgressCompleteAfterStaleReplaces(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("陈旧文件顶替后仍应补报真实文件的 100%%，实际 %v", got)
 	}
-	want := Progress{File: "uv#0.13.0#a48fd9a.zip", Downloaded: 1000, Total: 1000}
+	want := Progress{File: name, Downloaded: 1000, Total: 1000}
 	if got[1] != want {
 		t.Errorf("收尾事件不符: got %+v, want %+v", got[1], want)
 	}
@@ -280,7 +355,7 @@ func TestCompletingWriter(t *testing.T) {
 	d.mu.Lock()
 	d.total = 1000
 	d.active = "uv.zip" // 曾增长且已收尾的状态；增长语义由上面的测试覆盖
-	d.mu.Unlock()      // cache 下无 uv.zip.download：文件已消失 = 下载完成
+	d.mu.Unlock()       // cache 下无 uv.zip.download：文件已消失 = 下载完成
 
 	hook := &hookWriter{onWrite: func() { order = append(order, "write") }}
 	cw := &completingWriter{w: hook, dp: d}
@@ -329,4 +404,4 @@ func (h *hookWriter) Write(p []byte) (int, error) {
 type consoleFake struct{ console bool }
 
 func (c *consoleFake) Write(p []byte) (int, error) { return len(p), nil }
-func (c *consoleFake) WriterIsConsole() bool      { return c.console }
+func (c *consoleFake) WriterIsConsole() bool       { return c.console }

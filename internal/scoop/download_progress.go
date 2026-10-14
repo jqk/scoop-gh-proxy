@@ -1,6 +1,8 @@
 package scoop
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,8 +28,13 @@ type Progress struct {
 // 后静默，管道侧拿不到任何进度字节。好在默认下载器边下边写 cache 目录的
 // <name>.download 临时文件（完成后改名），总量又能从那行解析——轮询临时文件
 // 大小即可得到进度，以 Progress 事件回调给调用方：
-//   - feed：接到扫描行时解析 "Downloading <url> (15.0 MB)..." 得到本次总量
-//   - start/stop：轮询 cache 下最新的 *.download（200ms），整百分比变化时发一次事件
+//   - feed：解析 "Downloading <url> (15.0 MB)..."，记录总量并以 URL 锁定轮询目标
+//   - start/stop：轮询 cache 下属于目标的 *.download（200ms），整百分比变化时发一次事件
+//
+// cache 目录为所有 scoop 进程共享：另一窗口的 scoop 同样在其中增长临时文件，
+// 不加判别会把别人的下载串台画进本程序的画面（还配着错误的总量）。scoop 的
+// cache 文件名含 URL 哈希（core.ps1 cache_path），按 "#"+哈希片段匹配文件名
+// 即可只跟踪本次下载（见 cacheTag）；未见 Downloading 行（目标为空）时不跟踪
 //
 // aria2 启用时构造方传 nil（aria2 自带 \r 进度流，经透传展示即可）；
 // 所有方法 nil-safe，调用点无需判断
@@ -37,6 +44,7 @@ type downloadProgress struct {
 
 	mu       sync.Mutex
 	total    int64     // 总字节数，0 = 未知
+	target   string    // 轮询目标：URL 的 cache 文件名判别片段（"#"+sha256 前 7 位），空 = 未见 Downloading 行
 	lastPct  int       // 上次上报的整百分比
 	lastAt   time.Time // 上次上报时间（限频）
 	lastName string    // 上一拍选中的下载文件名
@@ -46,7 +54,11 @@ type downloadProgress struct {
 
 // "Downloading <url> (15.0 MB)..."（download.ps1:160）。总量为 scoop filesize
 // 格式：1024 进制、一位小数，单位 B/KB/MB/GB；数值可能带千分位逗号
-var downloadingLineRe = regexp.MustCompile(`^Downloading \S+ \(([\d.,]+)\s*(B|KB|MB|GB)\)\.\.\.$`)
+var downloadingLineRe = regexp.MustCompile(`^Downloading (\S+) \((.*)\)\.\.\.$`)
+
+// 括号内的总量文本（downloadingLineRe 的第二捕获组）；不匹配（服务器未返回
+// Content-Length 等）则 total 记 0，仅按已下载量上报
+var downloadingSizeRe = regexp.MustCompile(`^([\d.,]+)\s*(B|KB|MB|GB)$`)
 
 func newDownloadProgress(onProgress func(Progress), rootPath string) *downloadProgress {
 	return &downloadProgress{onProgress: onProgress, cacheDir: filepath.Join(rootPath, "cache")}
@@ -60,7 +72,9 @@ func newDownloadProgressFor(cfg *ScoopConfig, onProgress func(Progress)) *downlo
 	return newDownloadProgress(onProgress, cfg.RootPath)
 }
 
-// feed 解析 scoop 输出行，捕获下载总量（每次新下载都会重新输出该行）。nil-safe
+// feed 解析 scoop 输出行：从 "Downloading <url> (<总量>)..." 捕获本次下载的
+// URL（锁定轮询目标，见 cacheTag）与总量（每次新下载都会重新输出该行）。
+// nil-safe
 func (d *downloadProgress) feed(line string) {
 	if d == nil {
 		return
@@ -69,26 +83,47 @@ func (d *downloadProgress) feed(line string) {
 	if m == nil {
 		return
 	}
-	num, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64)
-	if err != nil {
-		return
-	}
-	var unit float64
-	switch m[2] {
-	case "KB":
-		unit = 1024
-	case "MB":
-		unit = 1024 * 1024
-	case "GB":
-		unit = 1024 * 1024 * 1024
-	default:
-		unit = 1
-	}
 
 	d.mu.Lock()
-	d.total = int64(num * unit)
+	defer d.mu.Unlock()
+	d.target = cacheTag(m[1])
+	d.total = 0
 	d.lastPct = 0
-	d.mu.Unlock()
+	if sm := downloadingSizeRe.FindStringSubmatch(m[2]); sm != nil {
+		if total, err := parseFileSize(sm[1], sm[2]); err == nil {
+			d.total = total
+		}
+	}
+}
+
+// parseFileSize 解析 scoop filesize 的数值与单位（1024 进制）
+func parseFileSize(numStr, unit string) (int64, error) {
+	num, err := strconv.ParseFloat(strings.ReplaceAll(numStr, ",", ""), 64)
+	if err != nil {
+		return 0, err
+	}
+	var scale float64
+	switch unit {
+	case "KB":
+		scale = 1024
+	case "MB":
+		scale = 1024 * 1024
+	case "GB":
+		scale = 1024 * 1024 * 1024
+	default:
+		scale = 1
+	}
+	return int64(num * scale), nil
+}
+
+// cacheTag 计算 URL 的 cache 文件名判别片段。scoop 命名 cache 文件为
+// "<app>#<version>#<sha256(url) 前 7 位><扩展名>"（core.ps1 cache_path，下载
+// 期间加 .download 后缀），app#version 无从得知也不需要——"#"+哈希片段在文件
+// 名中唯一定位属于该 URL 的临时文件，把共享 cache 目录中其它 scoop 进程的
+// 并发下载排除在外
+func cacheTag(url string) string {
+	sum := sha256.Sum256([]byte(url))
+	return "#" + hex.EncodeToString(sum[:])[:7]
 }
 
 // start 启动轮询协程，返回停止函数（幂等）。nil-safe
@@ -115,15 +150,18 @@ func (d *downloadProgress) loop(done <-chan struct{}) {
 }
 
 func (d *downloadProgress) tick() {
-	name, size, ok := currentDownload(d.cacheDir)
+	d.mu.Lock()
+	target := d.target
+	d.mu.Unlock()
+	name, size, ok := currentDownload(d.cacheDir, target)
 	if !ok || d.onProgress == nil {
 		return
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	// 只跟随正在增长的文件：currentDownload 按 mtime 盲选，上次中断下载遗留的
-	// 陈旧 .download（不再写入）会被误当成正在下载而上报，故同名且变大才继续
+	// 只跟随正在增长的文件：名字匹配目标的陈旧 .download（上次中断下载遗留、
+	// 不再写入）会被误当成正在下载而上报，故同名且变大才继续
 	growing := name == d.lastName && size > d.lastSize
 	d.lastName, d.lastSize = name, size
 	if !growing {
@@ -169,8 +207,11 @@ func (d *downloadProgress) complete() {
 	d.onProgress(Progress{File: name, Downloaded: d.total, Total: d.total})
 }
 
-// currentDownload 找 cache 目录中正在写入的 *.download 临时文件（取最新修改的那个）
-func currentDownload(dir string) (name string, size int64, ok bool) {
+// currentDownload 找 cache 目录中属于 target（URL 哈希片段，见 cacheTag）且
+// 最新修改的 *.download 临时文件。名字不含片段的一律无视——其它 scoop 进程的
+// 并发下载即便正在增长、mtime 更新也不属于本程序；target 为空（尚未见到
+// Downloading 行）时无匹配
+func currentDownload(dir, target string) (name string, size int64, ok bool) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*.download"))
 	if err != nil || len(matches) == 0 {
 		return "", 0, false
@@ -178,6 +219,9 @@ func currentDownload(dir string) (name string, size int64, ok bool) {
 	var best string
 	var bestTime time.Time
 	for _, m := range matches {
+		if target == "" || !strings.Contains(filepath.Base(m), target) {
+			continue
+		}
 		if st, err := os.Stat(m); err == nil && st.ModTime().After(bestTime) {
 			best, bestTime, size = m, st.ModTime(), st.Size()
 		}
