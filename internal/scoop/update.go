@@ -3,6 +3,7 @@ package scoop
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -14,7 +15,7 @@ import (
 // Skipped / NotGithub / Proxied 是 All 中元素的分组视图（同一份记录的指针）
 type UpdatePlan struct {
 	Leftovers []ManagedApp  // 开工前自动还原的遗留备份（Status 为 Success / Failed）。这是因为再次执行 update 时，gh_proxy 可能不同
-	All       []ManagedApp  // 更新目标在 scoop status -l 中的行（按原顺序），Status 为分组结果；全量更新为全部行，点名更新为匹配到的行
+	All       []ManagedApp  // 更新目标在 scoop status -l 中的行（按名称字母升序，忽略大小写），Status 为分组结果；全量更新为全部行，点名更新为匹配到的行
 	Skipped   []*ManagedApp // 不处理：Skipped、Manifest not found、Manifest error、Proxy set 等（保留待用）。Proxy set：已带前缀且无备份，无法安全还原，本次跳过
 	NotGithub []*ManagedApp // 无待修改 URL，第二更新组：不处理 manifest 与 proxy，直接更新
 	Proxied   []*ManagedApp // Is github，第一更新组：proxy 保护罩内更新
@@ -46,6 +47,9 @@ func PrepareUpdate(cfg *ScoopConfig, requested []string) (UpdatePlan, error) {
 		apps, plan.NoUpdate = pickRequestedApps(apps, requested)
 	}
 
+	// 分组前统一排序：明细表与两组（Proxied / Not github）的执行顺序一致
+	sortAppsByName(apps)
+
 	plan.All = apps
 	for i := range apps {
 		app := &apps[i]
@@ -62,6 +66,18 @@ func PrepareUpdate(cfg *ScoopConfig, requested []string) (UpdatePlan, error) {
 	}
 
 	return plan, nil
+}
+
+// sortAppsByName 按名称字母升序排列 app（忽略大小写；字母序相同时按原名称的
+// 字节序定序，保证结果确定）。scoop status -l 的行序并非有序，分组前统一排序，
+// 使明细表、两组执行顺序与汇总表共用同一顺序
+func sortAppsByName(apps []ManagedApp) {
+	slices.SortFunc(apps, func(a, b ManagedApp) int {
+		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 }
 
 // pickRequestedApps 从 outdated 行中挑出点名的 app：

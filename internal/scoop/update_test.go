@@ -94,6 +94,30 @@ func TestMatchScoopFailure(t *testing.T) {
 	}
 }
 
+// TestSortAppsByName 名称字母升序（忽略大小写）：大小写混排归并、字母序相同的
+// 行按原名称字节序定序（结果确定）
+func TestSortAppsByName(t *testing.T) {
+	apps := []ManagedApp{
+		{Name: "nodejs"},
+		{Name: "Alma"},
+		{Name: "git"},
+		{Name: "7zip"},
+		{Name: "WINDOWS-terminal"},
+		{Name: "alm"},
+		{Name: "Bitwarden"},
+	}
+	sortAppsByName(apps)
+
+	got := make([]string, 0, len(apps))
+	for _, app := range apps {
+		got = append(got, app.Name)
+	}
+	want := []string{"7zip", "alm", "Alma", "Bitwarden", "git", "nodejs", "WINDOWS-terminal"}
+	if !slices.Equal(got, want) {
+		t.Errorf("sorted = %v, want %v", got, want)
+	}
+}
+
 // TestPickRequestedApps 点名匹配：大小写不敏感、静默去重（保留首现顺序）、
 // 同名 outdated 行只取第一行、未匹配的点名原样归入 noUpdate
 func TestPickRequestedApps(t *testing.T) {
