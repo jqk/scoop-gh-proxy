@@ -1,0 +1,75 @@
+# 跨编辑器通用配置
+# 适用于 VS Code、IntelliJ IDEA 等
+# 将此文件保存为项目根目录下的 .editorconfig
+
+root = true
+
+# 所有文件的通用规则
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# 默认使用 4 个空格缩进
+indent_style = space
+indent_size = 4
+
+# JSON：2 个空格
+[*.json]
+indent_size = 2
+
+# JSONC：2 个空格（例如 VS Code settings.json）
+[*.jsonc]
+indent_size = 2
+
+# YAML：2 个空格
+[*.{yml,yaml}]
+indent_size = 2
+
+# Go：遵循 gofmt，使用 Tab
+[*.go]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# Java：4 个空格
+[*.java]
+indent_style = space
+indent_size = 4
+
+# Kotlin：4 个空格
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+
+# Markdown：2 个空格
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# HTML、CSS、JavaScript、TypeScript：2 个空格
+[*.{html,css,scss,js,jsx,ts,tsx}]
+indent_style = space
+indent_size = 2
+
+# XML：4 个空格
+[*.xml]
+indent_style = space
+indent_size = 4
+
+# Shell 脚本：2 个空格
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Python：遵循 PEP 8
+[*.py]
+indent_style = space
+indent_size = 4
+
+# Python 类型存根文件
+[*.pyi]
+indent_style = space
+indent_size = 4
