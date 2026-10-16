@@ -20,6 +20,8 @@ GitHub 自动发布（.github/workflows/release.yml）：推送 `v*` tag 触发�
 - 依赖方向单向：main → internal/cli → internal/scoop，反向禁止
 
 ## 文件结构
+- `README.md` — 用户手册（功能、安装、配置、命令速查、退出码）：随 Release zip 发布，其中 docs 链接必须用 GitHub 绝对 URL；回答用法类问题可直接引用，无需重新分析代码
+- `docs/*.md` — 面向用户与开发者的文档页（Home / Install / Commands / Principles / Architecture / Development / FAQ），不建 GitHub Wiki、本目录即最终归宿：页面间用相对链接（.md 后缀）；命令行为变更时与 README.md、本文件三处同步
 - `main.go` — 入口，子命令分发（set / restore / status / update [app...] / install <bucket/app> / help / version，不带 -- 前缀），按 cli.Run* 返回的退出码统一 os.Exit
 - `internal/cli/cli.go` — 全部 Run* 命令入口（RunSet / RunRestore / RunStatus / RunUpdate / RunInstall / RunHelp / RunVersion，RunSet/RunRestore 无参数——dryRun 只在内部供 status 复用），返回退出码；输出以程序信息头开始（printBanner）、空行结尾（defer fmt.Println）；update 与 install 的 proxy 保护罩在此层（PrepareUpdate / LocateInstallApp 成功后进入更新或安装，结束处显式调用 RestoreScoopProxy）；RunUpdate 接收 update 之后的参数（requestedApps 归一化：任一参数为 * 即全量更新，既有 * 又点名时返回 starMixed 交调用方提示），更新分两组先后执行——Proxied 组（Is github，proxy 保护罩内）在前、Not github 组（不处理 manifest 与 proxy）在后，Proxy set 状态跳过（归入 Skipped 组，本次不处理），两组 [n/m] 连续编号、均非空时中间以横线分隔（printGroupSeparator），逐 app 更新块抽为 runUpdateApp 共用；RunInstall 经 parseInstallArg 解析 <bucket/app>（bucket 可省略）
 - `internal/cli/printer.go` — 程序信息头与表格：version / commitDate（构建时 -ldflags -X 注入，-X 按包路径定位、与所在文件无关）、bannerText / printBanner（版权行 + 名称版本行 + 空行；日期为注入的提交日期，直接构建时省略、版权年份取当前年）、printUsage、汇总与明细表（printSetSummary / printRestoreSummary / printSetTable / printRestoreTable / printAppOutcome / printUpdateSummary（覆盖 Proxied 与 Not github 两组，顺序与执行一致）/ printGroupSeparator（update 两组操作间的分隔横线，横线前一空行自带、后一空行由下一组首个 app 块的空行承担）/ printTable / pickColor——与 scoop 状态常量编译期绑定）
