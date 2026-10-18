@@ -104,13 +104,14 @@ uv        0.12.19            0.12.20         extras       Is github
 更新过期软件，整个「加前缀 → 下载 → 还原」流程自动化。语法：
 
 ```text
-scoop-gh update          # 全量更新
-scoop-gh update *        # 与 update 完全等价
+scoop-gh update          # 先执行 scoop update 更新 scoop 与 buckets，再全量更新
+scoop-gh update *        # 直接全量更新（不执行 scoop update）
 scoop-gh update git uv   # 点名更新（一个或多个）
 ```
 
 执行流程：
 
+0. 仅 `update`（不带参数）执行本步：流式执行 `scoop update` 更新 scoop 自身与 buckets。失败不中断——个别 bucket 更新失败（如网络原因）只影响新版本的可见性，输出黄色警告后按当前 buckets 状态继续。`update *` 与点名更新跳过此步
 1. **清理遗留**：自动还原上次运行遗留的备份与 proxy（异常中断自愈），有遗留时输出黄色警告与还原明细
 2. 执行 `scoop status -l`，按名称字母升序排列（忽略大小写）后分析 manifest、分组：
    - `Is github` → **Proxied 组**（第一更新组）
@@ -171,7 +172,7 @@ curl      8.10.1             8.11.0          main         Updated
 
 ### 退出码
 
-- 0 = 全部执行完毕（个别应用更新失败不影响退出码，失败体现在结果行与汇总中）
+- 0 = 全部执行完毕（个别应用更新失败不影响退出码，失败体现在结果行与汇总中；`scoop update` 步骤失败同样不影响退出码，仅警告）
 - 1 = 配置错误、`scoop status -l` 无法执行或解析失败、遗留清理失败、proxy 清空失败
 
 ## install &lt;bucket/app&gt;
@@ -230,7 +231,7 @@ scoop-gh version    # 程序信息头（版本在第二行）
   scoop-gh set                   向待更新应用 manifest 中的 github 下载链接插入代理地址
   scoop-gh restore               还原 set 命令的修改
   scoop-gh status                预览将要 set/restore 的明细
-  scoop-gh update [app...]       更新所有过期软件；指定 app 时只更新指定的 app
+  scoop-gh update [app...]       更新所有过期软件；不带参数时先更新 scoop 与 buckets
   scoop-gh install <bucket/app>  安装指定的应用, bucket 可省略
 
   scoop-gh help                  显示帮助，详细信息参见 README.md

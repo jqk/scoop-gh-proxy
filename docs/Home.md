@@ -13,7 +13,7 @@ scoop-gh-proxy 是一个 Windows 命令行工具，用于加速 Scoop 通过 Git
 | `scoop-gh set` | 为待更新应用的 manifest 加代理前缀（修改前自动备份） |
 | `scoop-gh restore` | 还原 set 的全部修改，并恢复被清空的 scoop proxy |
 | `scoop-gh status` | 预览将要 set / restore 的明细，不修改任何文件 |
-| `scoop-gh update [app...]` | 更新过期软件（自动处理 manifest 与 proxy，结束后还原） |
+| `scoop-gh update [app...]` | 更新过期软件（自动处理 manifest 与 proxy，结束后还原）；不带参数时先执行 `scoop update` 更新 scoop 与 buckets |
 | `scoop-gh install <bucket/app>` | 安装指定应用（GitHub 应用在保护罩内安装） |
 | `scoop-gh help` / `version` | 显示帮助 / 版本 |
 
@@ -31,7 +31,7 @@ scoop-gh-proxy 是一个 Windows 命令行工具，用于加速 Scoop 通过 Git
 # 1. 配置 GitHub 代理（必填，替换为你可用的 gh 代理地址）
 scoop config set gh_proxy https://你的gh代理地址/
 
-# 2. 一条命令更新全部过期软件（自动加前缀、清 proxy、更新、还原）
+# 2. 一条命令更新全部过期软件（先更新 scoop 与 buckets，再自动加前缀、清 proxy、更新、还原）
 scoop-gh update
 ```
 

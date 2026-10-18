@@ -57,7 +57,7 @@ func printUsage() {
 	fmt.Println("  scoop-gh set                   向待更新应用 manifest 中的 github 下载链接插入代理地址")
 	fmt.Println("  scoop-gh restore               还原 set 命令的修改")
 	fmt.Println("  scoop-gh status                预览将要 set/restore 的明细")
-	fmt.Println("  scoop-gh update [app...]       更新所有过期软件；指定 app 时只更新指定的 app")
+	fmt.Println("  scoop-gh update [app...]       更新所有过期软件；不带参数时先更新 scoop 与 buckets")
 	fmt.Println("  scoop-gh install <bucket/app>  安装指定的应用, bucket 可省略")
 	fmt.Println()
 	fmt.Println("  scoop-gh help                  显示帮助，详细信息参见 README.md")

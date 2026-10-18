@@ -34,7 +34,7 @@ scoop 出错时退出码经常为 0，且存在静默失败（如架构不支持
 
 ### update 与「set → scoop update → restore」是什么关系？该用哪个？
 
-日常更新用 `update`——一条命令自动完成「加前缀 → 清 proxy → 逐个更新 → 还原」，无需手动收尾。经典三步适合只想预先改好链接、自己控制 scoop 命令的场景。注意两者都不执行 `scoop update` 本身（不更新 scoop 自身与桶），需要时先手动执行一次。
+日常更新用 `update`——一条命令自动完成「更新 scoop 与 buckets → 加前缀 → 清 proxy → 逐个更新 → 还原」，无需手动收尾。经典三步适合只想预先改好链接、自己控制 scoop 命令的场景。注意：不带参数的 `update` 会先执行一次 `scoop update`（更新 scoop 自身与桶）；`update *` 与点名更新、以及经典三步都不执行 `scoop update`，需要时先手动执行一次。
 
 ### status 输出的两个计数是什么意思？
 

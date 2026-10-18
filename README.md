@@ -5,7 +5,7 @@ Windows 命令行工具，为 [Scoop](https://scoop.sh) 加速 GitHub 下载：�
 ## 功能特性
 
 - `set` / `restore` / `status` — 手动修改、还原、预览（不落盘）manifest 中的 GitHub 下载链接
-- `update [app...]` — 一条命令更新全部或指定过期软件：自动加前缀、清空 scoop proxy（备份恢复）、逐个流式更新、无论成败还原
+- `update [app...]` — 一条命令更新全部或指定过期软件：自动加前缀、清空 scoop proxy（备份恢复）、逐个流式更新、无论成败还原；不带参数时先执行 `scoop update` 更新 scoop 自身与 buckets
 - `install <bucket/app>` — 安装指定应用，GitHub 应用在保护罩内安装，bucket 可省略
 - 只修改顶层 `url` 与 `architecture.<架构>.url` 中 `https://github.com` 前缀的 URL，manifest 其余字节逐字保留
 - 修改前自动备份为 `<app>-gh-backup.json`；set / restore / update 全部幂等，支持中断自愈
@@ -44,14 +44,14 @@ scoop config set gh_proxy https://你的gh代理地址/
 | `scoop-gh set` | 为待更新应用的 manifest 加代理前缀（自动备份） |
 | `scoop-gh restore` | 还原 set 的修改，并恢复被清空的 proxy |
 | `scoop-gh status` | 预览将要 set / restore 的明细，不修改任何文件 |
-| `scoop-gh update [app...]` | 更新过期软件；点名时只更新指定的 app（不区分大小写，`update` 与 `update *` 等价） |
+| `scoop-gh update [app...]` | 更新过期软件；不带参数时先执行 `scoop update` 更新 scoop 与 buckets 再全量更新，`update *` 直接全量更新，点名时只更新指定的 app |
 | `scoop-gh install <bucket/app>` | 安装指定应用，bucket 可省略（逐桶查找） |
 | `scoop-gh help` | 显示帮助 |
 | `scoop-gh version` | 显示版本 |
 
 ## 快速上手
 
-日常更新——一条命令完成（含还原，无需手动收尾）：
+日常更新——一条命令完成（先执行 `scoop update` 更新 scoop 与 buckets，再更新过期应用，含还原，无需手动收尾；只想更新应用、跳过 scoop 更新时用 `scoop-gh update *`）：
 
 ```powershell
 scoop-gh update

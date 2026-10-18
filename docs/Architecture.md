@@ -29,7 +29,7 @@ scoop-gh-proxy/
     ├── status.go                 # 执行并解析 scoop status -l
     ├── set.go                    # set 主流程
     ├── restore.go                # restore 主流程（update 遗留清理复用）
-    ├── update.go                 # update 准备与分组、逐组逐个更新
+    ├── update.go                 # update 核心：裸 update 的 scoop update 步骤、准备与分组、逐组逐个更新
     ├── install.go                # install 的定位分析与安装入口
     ├── proxied_cmd.go            # update/install 共用的逐 app 执行引擎（manifest 保护罩、流式执行）
     ├── markers.go                # scoop 成功/失败输出标志表（成败判定与失败原因捕获）

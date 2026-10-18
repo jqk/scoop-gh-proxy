@@ -93,7 +93,8 @@ func RunStatus() int {
 
 // ---------------------------------------------------------------------------
 // update（自动化更新：清理遗留 → 分组 → Proxied 组保护罩内更新 → Not github 组直接更新 → 汇总）
-// update [app...]：点名时只更新匹配到的 app；update * 与 update 等价
+// 不带参数：先执行 scoop update（更新 scoop 自身与 buckets）再全量更新；
+// update *：直接全量更新；点名时只更新匹配到的 app
 // ---------------------------------------------------------------------------
 
 // requestedApps 整理 update 的参数：
@@ -107,7 +108,8 @@ func requestedApps(args []string) (requested []string, starMixed bool) {
 	return nil, slices.ContainsFunc(args, func(a string) bool { return a != "*" })
 }
 
-// RunUpdate update [app...]：无参数或含 * 时全量更新，否则只更新点名的 app。
+// RunUpdate update [app...]：不带参数先执行 scoop update（更新 scoop 自身与
+// buckets）再全量更新；update * 直接全量更新；点名时只更新匹配到的 app。
 // 返回退出码：1 = 配置错误、status -l 失败或 proxy 清空失败
 func RunUpdate(args []string) int {
 	defer fmt.Println() // 输出以空行结尾
@@ -121,6 +123,17 @@ func RunUpdate(args []string) int {
 	requested, starMixed := requestedApps(args)
 	if starMixed {
 		warning("参数中有 * 号，忽略指定的 app 名称，按 update * 处理")
+	}
+
+	// 裸 update（不带参数）：先流式执行 scoop update 更新 scoop 自身与 buckets，
+	// 再进入与 update * 相同的全量更新流程。失败不中断：个别 bucket 更新失败
+	// 只影响新版本的可见性，后续按 status -l 的实际结果继续
+	if len(args) == 0 {
+		info("先更新 scoop 自身与 buckets（scoop update）")
+		if err := scoop.ScoopSelfUpdate(os.Stdout); err != nil {
+			warning("scoop update 执行失败: %s（继续按当前 buckets 更新）", err)
+		}
+		fmt.Println()
 	}
 
 	plan, err := scoop.PrepareUpdate(&cfg, requested)
