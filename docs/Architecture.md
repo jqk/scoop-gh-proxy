@@ -16,7 +16,7 @@
 
 ```text
 scoop-gh-proxy/
-├── main.go                       # 入口：子命令分发（set/restore/status/update/install/help/version）
+├── main.go                       # 入口：子命令分发（set/restore/status/update/install/list/help/version）
 ├── build.bat                     # 双架构构建，git tag 推导版本并 -ldflags 注入
 ├── internal/cli/
 │   ├── cli.go                    # 全部 Run* 命令入口；update/install 的 proxy 保护罩编排
@@ -31,6 +31,7 @@ scoop-gh-proxy/
     ├── restore.go                # restore 主流程（update 遗留清理复用）
     ├── update.go                 # update 核心：裸 update 的 scoop update 步骤、准备与分组、逐组逐个更新
     ├── install.go                # install 的定位分析与安装入口
+    ├── list.go                   # list 核心：scoop list 全量捕获、表格解析、按更新时间升序
     ├── proxied_cmd.go            # update/install 共用的逐 app 执行引擎（manifest 保护罩、流式执行）
     ├── markers.go                # scoop 成功/失败输出标志表（成败判定与失败原因捕获）
     ├── manifest.go               # manifest 只读定位与编辑应用（jsontext）
@@ -43,7 +44,7 @@ scoop-gh-proxy/
     └── tools.go                  # stripAnsi、fileExists 等工具函数
 ```
 
-各文件均有对应单测：`manifest_test.go`、`download_progress_test.go`、`update_test.go`、`install_test.go`、`run_scoop_test.go`（cli 层：`printer_test.go`、`cli_test.go`）。
+各文件均有对应单测：`manifest_test.go`、`download_progress_test.go`、`update_test.go`、`install_test.go`、`list_test.go`、`run_scoop_test.go`（cli 层：`printer_test.go`、`cli_test.go`）。
 
 ## manifest 流式编辑
 

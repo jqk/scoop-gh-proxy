@@ -5,7 +5,7 @@
 通用约定：
 
 - 每条命令的输出以**程序信息头**开始（版权行 + 名称版本行），以一个空行结束
-- scoop config 校验失败（`root_path` 或 `gh_proxy` 缺失，见[安装](Install.md)）时，所有命令报错退出码 1
+- scoop config 校验失败（`root_path` 或 `gh_proxy` 缺失，见[安装](Install.md)）时，所有命令报错退出码 1（`list` 不读取 config，无此校验）
 - 下方示例中省略程序信息头；`（…）` 表示略去的 scoop 流式输出；实际运行时状态行带颜色（成功绿色、失败红色、Skipped 黄色）
 - 非终端输出（重定向到文件、管道）自动去色，进度行以单行形式刷新
 
@@ -217,6 +217,38 @@ main/7zip: Is github，安装期间临时应用 gh_proxy 前缀，结束后还�
 - 0 = 安装成功（`Installed`）
 - 1 = 参数/配置错误、应用已安装、bucket 或应用不存在、状态不允许、proxy 清空失败、安装未成功或 manifest 还原失败
 
+## list
+
+执行 `scoop list`，按更新时间升序输出已安装应用。语法：
+
+```text
+scoop-gh list
+```
+
+与 update / install 的流式透传不同：全部输出收集完成后统一解析、排序、再输出。不读取 scoop config，不修改任何文件。
+
+执行流程：
+
+1. 执行 `scoop list`（全量捕获输出）
+2. 解析表格（Name / Version / Source / Updated / Info），按 Updated 升序排列
+3. 输出计数与明细表
+
+Updated 是该应用最近一次安装/更新的时间（scoop 取 install.json 的最后写入时间）。升序排列后最久未更新的应用在最前——每天执行 update 的前提下，长期不动的行意味着上游已许久没有发布新版本，可考虑 `scoop uninstall` 移除。
+
+输出示例：
+
+```text
+Installed apps: 3
+
+App Name  Version  Bucket Name  Updated              Info
+--------  -------  -----------  -------------------  ------------------
+aria2     1.37.0-1 main         2024-06-23 22:01:29
+cmirror   0.1.2    ajqk         2025-12-17 06:39:32  Deprecated package
+7zip      26.04    main         2026-10-08 07:22:54
+```
+
+退出码：0 = 正常列出；1 = `scoop list` 执行或解析失败。
+
 ## help / version
 
 ```text
@@ -233,6 +265,7 @@ scoop-gh version    # 程序信息头（版本在第二行）
   scoop-gh status                预览将要 set/restore 的明细
   scoop-gh update [app...]       更新所有过期软件；不带参数时先更新 scoop 与 buckets
   scoop-gh install <bucket/app>  安装指定的应用, bucket 可省略
+  scoop-gh list                  列出已安装应用, 按更新时间升序
 
   scoop-gh help                  显示帮助，详细信息参见 README.md
   scoop-gh version               显示版本

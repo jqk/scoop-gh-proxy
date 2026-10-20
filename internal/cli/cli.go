@@ -309,6 +309,26 @@ func RunInstall(args []string) int {
 }
 
 // ---------------------------------------------------------------------------
+// list（执行 scoop list，全量捕获后按更新时间升序统一输出）
+// ---------------------------------------------------------------------------
+
+// RunList list：执行 scoop list，按更新时间升序输出已安装应用明细（最久未更新的
+// 在最前）。不读取 scoop config，不修改任何文件。返回退出码：1 = scoop list
+// 执行或解析失败
+func RunList() int {
+	defer fmt.Println() // 输出以空行结尾
+	printBanner()
+
+	apps, err := scoop.ListInstalledApps()
+	if err != nil {
+		errorf("%s", err)
+		return 1
+	}
+	printListTable(apps)
+	return 0
+}
+
+// ---------------------------------------------------------------------------
 // help / version
 // ---------------------------------------------------------------------------
 

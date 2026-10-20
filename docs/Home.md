@@ -15,6 +15,7 @@ scoop-gh-proxy 是一个 Windows 命令行工具，用于加速 Scoop 通过 Git
 | `scoop-gh status` | 预览将要 set / restore 的明细，不修改任何文件 |
 | `scoop-gh update [app...]` | 更新过期软件（自动处理 manifest 与 proxy，结束后还原）；不带参数时先执行 `scoop update` 更新 scoop 与 buckets |
 | `scoop-gh install <bucket/app>` | 安装指定应用（GitHub 应用在保护罩内安装） |
+| `scoop-gh list` | 列出已安装应用，按更新时间升序（最久未更新的在最前） |
 | `scoop-gh help` / `version` | 显示帮助 / 版本 |
 
 ## 特性

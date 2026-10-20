@@ -7,6 +7,7 @@ Windows 命令行工具，为 [Scoop](https://scoop.sh) 加速 GitHub 下载：�
 - `set` / `restore` / `status` — 手动修改、还原、预览（不落盘）manifest 中的 GitHub 下载链接
 - `update [app...]` — 一条命令更新全部或指定过期软件：自动加前缀、清空 scoop proxy（备份恢复）、逐个流式更新、无论成败还原；不带参数时先执行 `scoop update` 更新 scoop 自身与 buckets
 - `install <bucket/app>` — 安装指定应用，GitHub 应用在保护罩内安装，bucket 可省略
+- `list` — 执行 scoop list 并按更新时间升序列出已安装应用（最久未更新的在最前，便于发现长期没有新版本的应用）
 - 只修改顶层 `url` 与 `architecture.<架构>.url` 中 `https://github.com` 前缀的 URL，manifest 其余字节逐字保留
 - 修改前自动备份为 `<app>-gh-backup.json`；set / restore / update 全部幂等，支持中断自愈
 - scoop 输出与下载进度实时透传；单应用失败不中断，成败以 scoop 成功标志判定（不依赖退出码）
@@ -46,6 +47,7 @@ scoop config set gh_proxy https://你的gh代理地址/
 | `scoop-gh status` | 预览将要 set / restore 的明细，不修改任何文件 |
 | `scoop-gh update [app...]` | 更新过期软件；不带参数时先执行 `scoop update` 更新 scoop 与 buckets 再全量更新，`update *` 直接全量更新，点名时只更新指定的 app |
 | `scoop-gh install <bucket/app>` | 安装指定应用，bucket 可省略（逐桶查找） |
+| `scoop-gh list` | 列出已安装应用，按更新时间升序（最久未更新的在最前） |
 | `scoop-gh help` | 显示帮助 |
 | `scoop-gh version` | 显示版本 |
 
@@ -102,6 +104,7 @@ Update Summary: 2 updated, 0 failed
 | set / restore / status | 正常走完（个别应用失败记录在明细表） | 配置错误 |
 | update | 全部执行完毕（个别应用失败不影响退出码，见汇总） | 配置错误、`scoop status -l` 失败、遗留清理或 proxy 清空失败 |
 | install | 安装成功 | 参数/配置错误、已安装、bucket 或 app 不存在、状态不允许、安装未成功 |
+| list | 正常列出 | `scoop list` 执行或解析失败 |
 | help / version | 正常 | —（不带参数运行或未知命令时为 1） |
 
 ## 文档

@@ -28,6 +28,8 @@ func main() {
 		code = cli.RunUpdate(os.Args[2:])
 	case "install":
 		code = cli.RunInstall(os.Args[2:])
+	case "list":
+		code = cli.RunList()
 	case "help":
 		code = cli.RunHelp()
 	case "version":

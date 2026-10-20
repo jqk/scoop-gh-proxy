@@ -11,7 +11,7 @@ import (
 )
 
 // runScoop 执行 scoop 子命令，返回合并 stdout/stderr 的输出（已去除 ANSI 转义码）。
-// 统一收口短命令（config / status -l）的执行。
+// 统一收口短命令（config / status -l / list）的执行。
 // 无超时：scoop 子命令的耗时不可控（磁盘慢、杀毒扫描等），超时误杀只会得到半截输出；
 // 挂死时由用户手动终止
 func runScoop(args ...string) (string, error) {

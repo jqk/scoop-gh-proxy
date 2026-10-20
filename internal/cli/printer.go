@@ -59,6 +59,7 @@ func printUsage() {
 	fmt.Println("  scoop-gh status                预览将要 set/restore 的明细")
 	fmt.Println("  scoop-gh update [app...]       更新所有过期软件；不带参数时先更新 scoop 与 buckets")
 	fmt.Println("  scoop-gh install <bucket/app>  安装指定的应用, bucket 可省略")
+	fmt.Println("  scoop-gh list                  列出已安装应用, 按更新时间升序")
 	fmt.Println()
 	fmt.Println("  scoop-gh help                  显示帮助，详细信息参见 README.md")
 	fmt.Println("  scoop-gh version               显示版本")
@@ -154,6 +155,28 @@ func printUpdateSummary(plan *scoop.UpdatePlan) {
 	if len(results) > 0 {
 		printSetTable(results)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// list 输出
+// ---------------------------------------------------------------------------
+
+// printListTable 输出已安装应用明细表（list 命令）：按更新时间升序，最久未更新的
+// 在最前。Updated 为该应用最近一次安装/更新的时间（scoop list 的 Updated 列）
+func printListTable(apps []scoop.ListApp) {
+	info("Installed apps: %d", len(apps))
+	if len(apps) == 0 {
+		return
+	}
+	rows := make([][]string, 0, len(apps))
+	for _, a := range apps {
+		updated := ""
+		if !a.Updated.IsZero() {
+			updated = a.Updated.Format(time.DateTime)
+		}
+		rows = append(rows, []string{a.Name, a.Version, a.Source, updated, a.Info})
+	}
+	printTable(os.Stdout, []string{"App Name", "Version", "Bucket Name", "Updated", "Info"}, rows, nil)
 }
 
 // ---------------------------------------------------------------------------
