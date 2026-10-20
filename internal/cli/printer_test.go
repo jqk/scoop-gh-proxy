@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fatih/color"
+
 	"github.com/jqk/scoop-gh-proxy/internal/scoop"
 )
 
@@ -164,5 +166,50 @@ func TestProgressPrinterFinishLineNoop(t *testing.T) {
 	}
 	if got, want := buf.String(), "hello"; got != want {
 		t.Errorf("无未完行时不应有额外输出\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestListRowColor(t *testing.T) {
+	// 测试进程 stdout 非终端，fatih/color 默认关闭转义序列，强制开启以比较颜色码
+	oldNoColor := color.NoColor
+	color.NoColor = false
+	defer func() { color.NoColor = oldNoColor }()
+
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	rowColor := listRowColor(now)
+
+	code := func(c *color.Color) string { // nil（不着色）与各颜色的稳定签名
+		if c == nil {
+			return ""
+		}
+		return c.Sprint("")
+	}
+
+	cases := []struct {
+		name    string
+		updated time.Time
+		want    *color.Color // nil = 正常色
+	}{
+		{"1年内", now.AddDate(0, 0, -1), nil},
+		{"恰好1年", now.AddDate(-1, 0, 0), nil},
+		{"1年零1天", now.AddDate(-1, 0, -1), color.New(color.FgYellow)},
+		{"恰好2年", now.AddDate(-2, 0, 0), color.New(color.FgYellow)},
+		{"2年零1天", now.AddDate(-2, 0, -1), color.New(color.FgRed)},
+	}
+	for _, c := range cases {
+		row := []string{"app", "1.0", "main", c.updated.Format(time.DateTime), ""}
+		if got := code(rowColor(row)); got != code(c.want) {
+			t.Errorf("%s: 颜色不符 got %q, want %q", c.name, got, code(c.want))
+		}
+	}
+
+	// 无法解析的 Updated（零值输出的空串、非日期文本）不着色
+	for _, cells := range [][]string{
+		{"app", "1.0", "main", "", ""},
+		{"app", "1.0", "main", "Updated", ""},
+	} {
+		if got := rowColor(cells); got != nil {
+			t.Errorf("Updated %q 不应着色", cells[3])
+		}
 	}
 }

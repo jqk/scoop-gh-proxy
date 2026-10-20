@@ -162,7 +162,8 @@ func printUpdateSummary(plan *scoop.UpdatePlan) {
 // ---------------------------------------------------------------------------
 
 // printListTable 输出已安装应用明细表（list 命令）：按更新时间升序，最久未更新的
-// 在最前。Updated 为该应用最近一次安装/更新的时间（scoop list 的 Updated 列）
+// 在最前。Updated 为该应用最近一次安装/更新的时间（scoop list 的 Updated 列），
+// 整行按 Updated 距今时长着色（见 listRowColor）
 func printListTable(apps []scoop.ListApp) {
 	info("Installed apps: %d", len(apps))
 	if len(apps) == 0 {
@@ -176,7 +177,30 @@ func printListTable(apps []scoop.ListApp) {
 		}
 		rows = append(rows, []string{a.Name, a.Version, a.Source, updated, a.Info})
 	}
-	printTable(os.Stdout, []string{"App Name", "Version", "Bucket Name", "Updated", "Info"}, rows, nil)
+	printTable(os.Stdout, []string{"App Name", "Version", "Bucket Name", "Updated", "Info"}, rows,
+		listRowColor(time.Now()))
+}
+
+// listRowColor 按 Updated 列（time.DateTime 文本）距今时长选择整行颜色：
+// 1 年内正常色、1 年前至 2 年内黄色、2 年前红色；无法解析（含零值输出的空串）
+// 返回 nil 保持原色
+func listRowColor(now time.Time) func(row []string) *color.Color {
+	oneYearAgo := now.AddDate(-1, 0, 0)
+	twoYearsAgo := now.AddDate(-2, 0, 0)
+	return func(row []string) *color.Color {
+		updated, err := time.ParseInLocation(time.DateTime, row[3], time.Local)
+		if err != nil {
+			return nil
+		}
+		switch {
+		case updated.Before(twoYearsAgo):
+			return color.New(color.FgRed)
+		case updated.Before(oneYearAgo):
+			return color.New(color.FgYellow)
+		default:
+			return nil
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
