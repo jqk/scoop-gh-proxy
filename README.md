@@ -7,7 +7,7 @@ Windows 命令行工具，为 [Scoop](https://scoop.sh) 加速 GitHub 下载：�
 - `set` / `restore` / `status` — 手动修改、还原、预览（不落盘）manifest 中的 GitHub 下载链接
 - `update [app...]` — 一条命令更新全部或指定过期软件：自动加前缀、清空 scoop proxy（备份恢复）、逐个流式更新、无论成败还原；不带参数时先执行 `scoop update` 更新 scoop 自身与 buckets
 - `install <bucket/app>` — 安装指定应用，GitHub 应用在保护罩内安装，bucket 可省略
-- `list` — 执行 scoop list 并按更新时间升序列出已安装应用（最久未更新的在最前，便于发现长期没有新版本的应用）；明细行按 Updated 距今着色：1 年内正常、1-2 年黄色、2 年以上红色
+- `list` — 执行 scoop list 并按更新时间升序列出已安装应用（最久未更新的在最前，便于发现长期没有新版本的应用）；明细行按 Updated 距今着色：1 个月内绿色、1 个月至 1 年正常、1-2 年黄色、2 年以上红色；表后输出分组统计（各时段软件数量，标签对齐冒号列、数量对齐个位列）
 - 只修改顶层 `url` 与 `architecture.<架构>.url` 中 `https://github.com` 前缀的 URL，manifest 其余字节逐字保留
 - 修改前自动备份为 `<app>-gh-backup.json`；set / restore / update 全部幂等，支持中断自愈
 - scoop 输出与下载进度实时透传；单应用失败不中断，成败以 scoop 成功标志判定（不依赖退出码）

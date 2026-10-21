@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -190,7 +191,9 @@ func TestListRowColor(t *testing.T) {
 		updated time.Time
 		want    *color.Color // nil = 正常色
 	}{
-		{"1年内", now.AddDate(0, 0, -1), nil},
+		{"1月内", now.AddDate(0, 0, -1), color.New(color.FgGreen)},
+		{"恰好1月", now.AddDate(0, -1, 0), color.New(color.FgGreen)},
+		{"1月零1天", now.AddDate(0, -1, -1), nil},
 		{"恰好1年", now.AddDate(-1, 0, 0), nil},
 		{"1年零1天", now.AddDate(-1, 0, -1), color.New(color.FgYellow)},
 		{"恰好2年", now.AddDate(-2, 0, 0), color.New(color.FgYellow)},
@@ -211,5 +214,22 @@ func TestListRowColor(t *testing.T) {
 		if got := rowColor(cells); got != nil {
 			t.Errorf("Updated %q 不应着色", cells[3])
 		}
+	}
+}
+
+func TestListAgeCounts(t *testing.T) {
+	// 四个分组的数量统计；无法解析的零值不计入任何分组
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	apps := []scoop.ListApp{
+		{Name: "fresh", Updated: now.AddDate(0, 0, -3)},         // 1 月内
+		{Name: "edge", Updated: now.AddDate(0, -1, 0)},          // 恰好 1 月，归前一组
+		{Name: "mid", Updated: now.AddDate(0, -6, 0)},           // 1 个月至 1 年
+		{Name: "old", Updated: now.AddDate(-1, 0, -1)},          // 1 至 2 年
+		{Name: "older", Updated: now.AddDate(-3, 0, 0)},         // 2 年以上
+		{Name: "unknown", Updated: time.Time{}},                 // 零值不计入分组
+	}
+	want := []int{2, 1, 1, 1}
+	if got := listAgeCounts(apps, now); !slices.Equal(got, want) {
+		t.Errorf("分组统计不符 got %v, want %v", got, want)
 	}
 }

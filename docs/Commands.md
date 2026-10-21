@@ -233,15 +233,18 @@ scoop-gh list
 2. 解析表格（Name / Version / Source / Updated / Info），按 Updated 升序排列
 3. 输出计数与明细表
 
-Updated 是该应用最近一次安装/更新的时间（scoop 取 install.json 的最后写入时间）。升序排列后最久未更新的应用在最前——每天执行 update 的前提下，长期不动的行意味着上游已许久没有发布新版本，可考虑 `scoop uninstall` 移除。
+Updated 是该应用最近一次安装/更新的时间（scoop 取 install.json 的最后写入时间）。升序排列后最久未更新的应用在最前——每天执行 update 的前提下，长期不动的行意味着上游已许久没有发布新版本（此后再无代码升级，没有更新包可更，并非用户未更新），可考虑 `scoop uninstall` 移除。
 
 明细表整行按 Updated 距今时长着色，便于一眼分辨陈旧应用：
 
-- 1 年内 — 正常色
+- 1 个月内 — 绿色
+- 1 个月至 1 年 — 正常色
 - 1 年前至 2 年内 — 黄色
 - 2 年前 — 红色
 
 Updated 无法解析（输出为空）的行保持正常色。
+
+明细表之后输出分组统计：软件总数即表上方的 Installed apps 行，下接四个时段的数量（Updated 仅首行带出、其余各行共享其义；标签右对齐共用冒号列、数量右对齐共用个位列，各行颜色与明细表着色一致）；Updated 无法解析的行计入总数、不计入分组。
 
 输出示例：
 
@@ -253,6 +256,11 @@ App Name  Version  Bucket Name  Updated              Info
 aria2     1.37.0-1 main         2024-06-23 22:01:29
 cmirror   0.1.2    ajqk         2025-12-17 06:39:32  Deprecated package
 7zip      26.04    main         2026-10-08 07:22:54
+
+Updated within 1 month: 1
+     1 month to 1 year: 1
+          1 to 2 years: 1
+         over 2 years: 0
 ```
 
 退出码：0 = 正常列出；1 = `scoop list` 执行或解析失败。

@@ -181,25 +181,82 @@ func printListTable(apps []scoop.ListApp) {
 		listRowColor(time.Now()))
 }
 
-// listRowColor 按 Updated 列（time.DateTime 文本）距今时长选择整行颜色：
-// 1 年内正常色、1 年前至 2 年内黄色、2 年前红色；无法解析（含零值输出的空串）
-// 返回 nil 保持原色
+// listAgeBands list 明细行按 Updated 距今时长的四个分组（按新到旧排列），行着色
+// 与表后统计共用：band 为统计行文本（Updated 仅首行带出，其余行共享其义），
+// color 为整行颜色（nil = 正常色）
+var listAgeBands = []struct {
+	band  string
+	color *color.Color
+}{
+	{"Updated within 1 month", color.New(color.FgGreen)},
+	{"1 month to 1 year", nil},
+	{"1 to 2 years", color.New(color.FgYellow)},
+	{"over 2 years", color.New(color.FgRed)},
+}
+
+// listAgeIndex 返回 Updated 距今落入的分组下标（listAgeBands）。
+// 边界归属较新的一组：恰好 1 个月 / 1 年 / 2 年归前一组
+func listAgeIndex(updated, now time.Time) int {
+	switch {
+	case !updated.Before(now.AddDate(0, -1, 0)):
+		return 0
+	case !updated.Before(now.AddDate(-1, 0, 0)):
+		return 1
+	case !updated.Before(now.AddDate(-2, 0, 0)):
+		return 2
+	default:
+		return 3
+	}
+}
+
+// listRowColor 按 Updated 列（time.DateTime 文本）距今时长选择整行颜色
+// （分组见 listAgeBands）；无法解析（含零值输出的空串）返回 nil 保持原色
 func listRowColor(now time.Time) func(row []string) *color.Color {
-	oneYearAgo := now.AddDate(-1, 0, 0)
-	twoYearsAgo := now.AddDate(-2, 0, 0)
 	return func(row []string) *color.Color {
 		updated, err := time.ParseInLocation(time.DateTime, row[3], time.Local)
 		if err != nil {
 			return nil
 		}
-		switch {
-		case updated.Before(twoYearsAgo):
-			return color.New(color.FgRed)
-		case updated.Before(oneYearAgo):
-			return color.New(color.FgYellow)
-		default:
-			return nil
+		return listAgeBands[listAgeIndex(updated, now)].color
+	}
+}
+
+// listAgeCounts 统计各分组的数量（无法解析 Updated 的零值不计入任何分组，
+// 仅计入总数）
+func listAgeCounts(apps []scoop.ListApp, now time.Time) []int {
+	counts := make([]int, len(listAgeBands))
+	for _, a := range apps {
+		if !a.Updated.IsZero() {
+			counts[listAgeIndex(a.Updated, now)]++
 		}
+	}
+	return counts
+}
+
+// printListSummary 输出 list 明细表之后的时长分组统计：四个分组各一行，
+// 标签右对齐共用同一冒号列、数量右对齐共用同一个位列，各行颜色与明细表
+// 着色一致；总数即明细表上方的 "Installed apps: N"，不重复输出。
+// Updated 距今越久说明该软件自那时起再无新版本可更（上游无代码升级），
+// 并非用户未更新。N 为 0 时不输出（与明细表一致）
+func printListSummary(apps []scoop.ListApp) {
+	if len(apps) == 0 {
+		return
+	}
+	counts := listAgeCounts(apps, time.Now())
+
+	fmt.Println()
+	labelWidth, countWidth := 0, 0
+	for i, b := range listAgeBands {
+		labelWidth = max(labelWidth, len(b.band))
+		countWidth = max(countWidth, len(strconv.Itoa(counts[i])))
+	}
+	countWidth++ // 冒号后至少留一个空格
+	for i, b := range listAgeBands {
+		c := plainColor
+		if b.color != nil {
+			c = b.color
+		}
+		c.Fprintf(os.Stdout, "%*s:%*d\n", labelWidth, b.band, countWidth, counts[i])
 	}
 }
 
