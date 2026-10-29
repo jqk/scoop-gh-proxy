@@ -60,9 +60,14 @@ func parseListApps(s string) ([]ListApp, error) {
 	return apps, nil
 }
 
-// parseListApp 按列起始位置切分一行，返回 ListApp 结构体
+// parseListApp 按列起始位置切分一行，返回 ListApp 结构体。
+// starts 来自纯 ASCII 的分隔线，字节索引与 rune 索引一致；数据行按 rune 切片：
+// scoop 会把过长单元格截断成 …（U+2026）结尾，PowerShell 表格按字符数对齐
+// （… 记 1 个字符），按字节切片会让含 … 的行自截断列起整体错位（UTF-8 下
+// … 占 3 字节，曾致 Updated 解析失败、Info 列吃到日期尾数）
 func parseListApp(line string, starts []int) ListApp {
-	length := len(line)
+	runes := []rune(line)
+	length := len(runes)
 
 	cut := func(a, b int) string { // 从行字符串中，按起止位置切分段落的闭包
 		if a >= length {
@@ -73,7 +78,7 @@ func parseListApp(line string, starts []int) ListApp {
 			return ""
 		}
 
-		return strings.TrimSpace(line[a:end])
+		return strings.TrimSpace(string(runes[a:end]))
 	}
 
 	// Updated 为本地时间（scoop 取 install.json 的 LastWriteTime），

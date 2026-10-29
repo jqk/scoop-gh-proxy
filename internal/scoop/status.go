@@ -48,7 +48,8 @@ func fetchOutdatedApps() ([]ManagedApp, error) {
 }
 
 // findColumnStarts 根据分隔线确定 5 列的起始位置（按 "-" 分组）。
-// 依赖分隔线行以 "-" 结尾（调用前已 TrimSpace），内层跳空格的循环才不会越界
+// 依赖分隔线行以 "-" 结尾（调用前已 TrimSpace），内层跳空格的循环才不会越界。
+// 分隔线只含 ASCII，返回的位置同时是字节与 rune 索引，供数据行按 rune 切片使用
 func findColumnStarts(sep string) (starts []int) {
 	length := len(sep)
 	i := 0
@@ -68,9 +69,12 @@ func findColumnStarts(sep string) (starts []int) {
 	return
 }
 
-// parseStatusApp 按列起始位置切分一行，返回 ManagedApp 结构体
+// parseStatusApp 按列起始位置切分一行，返回 ManagedApp 结构体。
+// 数据行按 rune 切片，理由同 parseListApp（list.go）：单元格可含 … 截断符或
+// 非 ASCII 字符，PowerShell 表格按字符数对齐，按字节切片会错位
 func parseStatusApp(line string, starts []int) ManagedApp {
-	length := len(line)
+	runes := []rune(line)
+	length := len(runes)
 
 	cut := func(a, b int) string { // 从行字符串中，按起止位置切分段落的闭包
 		if a >= length {
@@ -81,7 +85,7 @@ func parseStatusApp(line string, starts []int) ManagedApp {
 			return ""
 		}
 
-		return strings.TrimSpace(line[a:end])
+		return strings.TrimSpace(string(runes[a:end]))
 	}
 
 	app := ManagedApp{

@@ -15,14 +15,18 @@ func listRow(name, version, source, updated, info string) string {
 	return fmt.Sprintf(listRowFmt, name, version, source, updated, info)
 }
 
-// sampleListOutput 构造 scoop list 的表格输出（列起始位置与真实输出同构）
-func sampleListOutput() string {
-	sep := fmt.Sprintf(listRowFmt,
+// sepLine 构造与 listRowFmt 列位自洽的分隔线行
+func sepLine() string {
+	return fmt.Sprintf(listRowFmt,
 		strings.Repeat("-", 8), strings.Repeat("-", 9), strings.Repeat("-", 7),
 		strings.Repeat("-", 19), strings.Repeat("-", 4))
+}
+
+// sampleListOutput 构造 scoop list 的表格输出（列起始位置与真实输出同构）
+func sampleListOutput() string {
 	return "Installed apps:\n\n" +
 		fmt.Sprintf(listRowFmt, "Name", "Version", "Source", "Updated", "Info") +
-		sep +
+		sepLine() +
 		listRow("7zip", "26.04", "main", "2026-10-08 07:22:54", "") +
 		listRow("aria2", "1.37.0-1", "main", "2024-06-23 22:01:29", "") +
 		listRow("cmirror", "0.1.2", "ajqk", "2025-12-17 06:39:32", "Deprecated package")
@@ -72,6 +76,45 @@ func TestParseListAppsErrors(t *testing.T) {
 				t.Error("应返回错误")
 			}
 		})
+	}
+}
+
+// 回归：scoop 会把过长单元格截断成 …（U+2026）结尾，并按字符数对齐表格（… 记
+// 1 个字符）。UTF-8 下 … 占 3 字节，此前按字节切片使含 … 的行自截断列起整体
+// 错位 2 字节：Updated 解析失败（零值 → 排最前、不显示日期、不计入时长分组）、
+// Info 列吃到日期最后一个数字。真实案例：UTF-8 控制台（如 cmder 的 cmd，
+// chcp 65001）下 7 行缺日期，分组统计合计 143 ≠ 总数 150
+func TestParseListAppsTruncationEllipsis(t *testing.T) {
+	output := "Installed apps:\n\n" +
+		fmt.Sprintf(listRowFmt, "Name", "Version", "Source", "Updated", "Info") +
+		sepLine() +
+		listRow("maple", "7.9", "nerd-…", "2026-10-18 10:05:02", "")
+
+	apps, err := parseListApps(output)
+	if err != nil {
+		t.Fatalf("parseListApps 失败: %s", err)
+	}
+	want := ListApp{"maple", "7.9", "nerd-…", mustTime(t, "2026-10-18 10:05:02"), ""}
+	if len(apps) != 1 || apps[0] != want {
+		t.Errorf("含 … 行解析结果 = %+v, want %+v", apps, want)
+	}
+}
+
+// GBK 输出：… 的 GBK 编码 \xa1\xad 是非法 UTF-8，转 rune 后每字节一个 U+FFFD，
+// 与按字节切片等宽，解析行为不受 rune 化影响
+func TestParseListAppsGbkBytes(t *testing.T) {
+	output := "Installed apps:\n\n" +
+		fmt.Sprintf(listRowFmt, "Name", "Version", "Source", "Updated", "Info") +
+		sepLine() +
+		listRow("qqmusic", "22.76.0.0", "scoop\xa1\xad", "2026-10-14 17:45:30", "")
+
+	apps, err := parseListApps(output)
+	if err != nil {
+		t.Fatalf("parseListApps 失败: %s", err)
+	}
+	want := ListApp{"qqmusic", "22.76.0.0", "scoop\ufffd\ufffd", mustTime(t, "2026-10-14 17:45:30"), ""}
+	if len(apps) != 1 || apps[0] != want {
+		t.Errorf("GBK 字节行解析结果 = %+v, want %+v", apps, want)
 	}
 }
 
